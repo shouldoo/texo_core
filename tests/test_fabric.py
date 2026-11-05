@@ -196,6 +196,23 @@ class TestMount(FabricCase):
         mount.mount(self.fabric(), out=io.StringIO())
         self.assertEqual(sorted(json.loads((self.root / ".mcp.json").read_text())["mcpServers"]), ["memoria", "mine"])
 
+    def test_skills_are_linked_for_every_assistant_the_customer_winning(self):
+        for folder in (self.root / "industry" / "bakery" / "skills" / "proofing", self.root / "skills" / "proofing",
+                       self.root / "industry" / "bakery" / "skills" / "ovens"):
+            folder.mkdir(parents=True)
+            (folder / "SKILL.md").write_text(f"---\nname: {folder.name}\ndescription: d\n---\n")
+        out = io.StringIO()
+        mount.mount(self.fabric(), out=out)
+        for base in mount.SKILL_DIRS:
+            linked = self.root / base
+            self.assertEqual((linked / "proofing").resolve(), (self.root / "skills" / "proofing").resolve())
+            self.assertTrue((linked / "ovens" / "SKILL.md").is_file())
+        self.assertIn("skill proofing of industry bakery replaced by the one of customer", out.getvalue())
+        ignored = (self.root / ".gitignore").read_text().splitlines()
+        self.assertTrue(set(mount.IGNORED) <= set(ignored))
+        mount.mount(self.fabric(), out=io.StringIO())
+        self.assertEqual((self.root / ".gitignore").read_text().splitlines(), ignored, "added once")
+
     def test_a_declaration_error_mounts_nothing(self):
         (self.root / "texo.toml").write_text((self.root / "texo.toml").read_text().replace(
             'auth = "env:ACME_DRIVE_TOKEN"', 'auth = "abc123"'))

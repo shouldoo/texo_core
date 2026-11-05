@@ -1,0 +1,5 @@
+# gitleaks: the default rules.
+title = "texo_core"
+
+[extend]
+useDefault = true

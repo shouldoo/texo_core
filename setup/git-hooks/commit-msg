@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# commit-msg: refuse a message that names an AI assistant as author (scripts/check_attribution.py).
+# Installed by setup/install-git-hooks.sh in the customer repository and in its submodules.
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+exec python3 "$here/../../scripts/check_attribution.py" --message "$1"

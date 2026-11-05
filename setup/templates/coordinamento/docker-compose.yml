@@ -1,0 +1,57 @@
+# The coordination Odoo of a fabric (core/playbooks/coordinamento-locale.md): copied by
+# setup/coordinamento-up.sh into $TEXO_STACK, outside git. Odoo 20 Community and the modules of texo_hub at a
+# release, nothing else. Loopback only: put a TLS proxy in front of it before anyone reaches it from the network,
+# since a token travels as a bearer. The ports come from the .env next to this file.
+name: texo-coordinamento
+services:
+  db:
+    # PostgreSQL 17 with pgvector: the vectors of texo_vector
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_DB: postgres
+    secrets: [pg_password]
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "odoo"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+  # tei: the local embedding service of texo_vector (Text Embeddings Inference, CPU): the texts of the memory never
+  # leave the machine. Odoo reaches it as http://tei:80 (texo_vector.endpoint). BAAI/bge-m3 needs ~4.6 GB of RAM
+  # (--max-batch-tokens 2048, or it runs out of memory at warm-up); on a small machine use
+  # intfloat/multilingual-e5-small (384 dimensions, ~0.5 GB) and set texo_vector.model and .dimensions to match.
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    command: ["--model-id", "BAAI/bge-m3", "--auto-truncate", "--max-batch-tokens", "2048", "--port", "80"]
+    ports: ["127.0.0.1:${TEXO_TEI_PORT:-8080}:80"]
+    volumes: [tei-data:/data]
+    restart: unless-stopped
+  # tei-rerank: the optional reranker of texo_vector (cross-encoder, ~4.3 GB of RAM), off unless asked:
+  # docker compose --profile rerank up -d tei-rerank, then texo_vector.rerank_endpoint = http://tei-rerank:80.
+  # On a CPU it costs 7-30 s per search: turn it on where an accelerator serves it.
+  tei-rerank:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    profiles: ["rerank"]
+    command: ["--model-id", "BAAI/bge-reranker-v2-m3", "--auto-truncate", "--max-batch-tokens", "4096", "--port", "80"]
+    volumes: [tei-data:/data]
+    restart: unless-stopped
+  web:
+    build: .
+    image: texo-coordinamento:20.0
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["127.0.0.1:${TEXO_WEB_PORT:-8069}:8069", "127.0.0.1:${TEXO_LONGPOLL_PORT:-8072}:8072"]
+    volumes:
+      - ./odoo.conf:/etc/odoo/odoo.conf:ro
+      - ./texo_hub:/mnt/modules/texo_hub:ro
+      - ./filestore:/var/lib/odoo
+      - ./backups:/mnt/backups
+    restart: unless-stopped
+secrets:
+  pg_password:
+    file: ./pg_password
+volumes:
+  db-data:
+  tei-data:

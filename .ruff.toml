@@ -6,4 +6,6 @@ select = ["E", "F", "W", "I", "B"]
 [lint.per-file-ignores]
 # the client of the hub keeps its tool schemas and argument parser one entry per line
 "texo/hub.py" = ["E501", "E702", "E741"]
-"tests/test_hub.py" = ["E501"]
+"tests/*.py" = ["E501"]
+# the measuring and ingestion scripts keep their argument help on one line
+"scripts/*.py" = ["E501", "B905"]
