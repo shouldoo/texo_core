@@ -93,6 +93,8 @@ and an expiry.
 | `thread <id> ls\|read\|search` | reads a git-remote source at its pinned ref, without cloning it |
 | `seed [--apply --yes]` | the `seed.toml` of every pack into the hub (route `admin/seed`, administrators): a dry run, then the writes |
 | `where [--pack <name>]` | the folder of the core, or of an installed pack |
+| `config` | the configuration of the organisation in its hub: its slug, packs and threads |
+| `config-set <file> [--apply --yes]` | administrators: the hub made to say what a TOML file with `[[pack]]` and `[[thread]]` says (a list left out is not touched); a dry run first |
 | `mcp` | the MCP server `memoria` over stdio: the rules of the session as instructions, the memory as tools |
 | `run-thread <id>` | started by the assistants: an MCP thread with its credentials, so no token is written in a configuration file |
 | `whoami`, `rules`, `context`, `search`, `read`, `note`, `lesson`, `task`, `task-note`, `log-time`, `update`, `review`, `documents`, `document-write`, `sources-*`, … | the memory, as the person: every write needs `--yes` after the person agreed |

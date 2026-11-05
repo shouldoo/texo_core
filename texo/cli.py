@@ -10,6 +10,8 @@ on the working folder the current directory belongs to (or --root):
     texo thread <id> ls|read|search ...   read a git-remote source at its pinned ref, without cloning it
     texo seed [--apply --yes]     the seed of the packs into the hub (administrators)
     texo where [--pack <name>]    where the core (or an installed pack) is on this machine
+    texo config                   the configuration of the organisation in its hub: packs and threads
+    texo config-set <file> [--apply --yes]   administrators: the hub made to say what the file says
     texo run-thread <id>          started by the assistants: an MCP thread with its credentials
     texo mcp                      the MCP server memoria over stdio
 """
@@ -17,6 +19,7 @@ import base64
 import json
 import os
 import sys
+import tomllib
 from pathlib import Path
 
 from . import bridge, hub, mount, packs, seed, setup_assistants, threads
@@ -46,6 +49,12 @@ def extend(sub):
     p = sub.add_parser("run-thread", help="an MCP thread with its credentials (started by the assistants)")
     p.add_argument("thread_id")
     sub.add_parser("version")
+    sub.add_parser("config", help="the configuration of the organisation in its hub: packs and threads")
+    p = sub.add_parser("config-set", help="administrators: the configuration of the hub from a TOML file")
+    p.add_argument("file", help="TOML with [[pack]] and/or [[thread]] (a list left out is not touched), "
+                                "optional [texo] organisation")
+    p.add_argument("--apply", action="store_true")
+    p.add_argument("--yes", action="store_true")
 
 
 def fabric_of(args):
@@ -104,6 +113,40 @@ def local(args, out, err):
     return 0
 
 
+def config_payload(path, apply):
+    """The payload of admin/config from a TOML file: the lists it has, the slug if it names one."""
+    with open(path, "rb") as handle:
+        data = tomllib.load(handle)
+    payload = {"apply": bool(apply)}
+    if "pack" in data:
+        payload["packs"] = data["pack"]
+    if "thread" in data:
+        payload["threads"] = data["thread"]
+    if (data.get("texo") or {}).get("organisation"):
+        payload["slug"] = data["texo"]["organisation"]
+    if len(payload) == 1:
+        raise ConfigError(f"{path} has no [[pack]], no [[thread]] and no [texo] organisation: nothing to set")
+    return payload
+
+
+def render_config(data):
+    lines = [f"organisation {data.get('organisation')} ({data.get('company')})"]
+    lines += [f"pack {p['name']} {p['version']}" for p in data.get("packs") or []]
+    lines += [f"thread {t['id']} [{t['type']}, {t['driver']}, {t['data_class']}, writes {t.get('writes', 'never')}]"
+              for t in data.get("threads") or []]
+    return "\n".join(lines)
+
+
+def render_changes(answer):
+    counts = ", ".join(f"{n} {status}" for status, n in sorted(answer["counts"].items())) or "nothing"
+    lines = [f"{counts}{'' if answer['applied'] else ' (dry run: texo config-set <file> --apply --yes)'}"]
+    for item in answer["items"]:
+        if item["status"] != "unchanged":
+            changes = f" ({', '.join(item['changes'])})" if item.get("changes") else ""
+            lines.append(f"  [{item['status']}] {item['kind']} {item['key']}{changes}")
+    return "\n".join(lines)
+
+
 def connect(args):
     url, token = hub_settings(args.root)
     client = hub.Hub(url, token)
@@ -121,6 +164,17 @@ def main(argv=None, out=sys.stdout, err=sys.stderr):
         client = connect(args)
         if args.command == "mcp":
             hub.serve_mcp(client)
+            return 0
+        if args.command == "config":
+            data = client.call("config")
+            out.write((json.dumps(data, indent=2, ensure_ascii=False) if args.json else render_config(data)) + "\n")
+            return 0
+        if args.command == "config-set":
+            if args.apply and not args.yes:
+                err.write("refused: --apply writes to the hub and needs --yes, after the person agreed\n")
+                return 2
+            answer = client.call("admin/config", config_payload(args.file, args.apply))
+            out.write(render_changes(answer) + "\n")
             return 0
         if args.command == "seed":
             if args.apply and not args.yes:

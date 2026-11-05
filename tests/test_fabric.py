@@ -321,6 +321,25 @@ class TestInit(FabricCase):
                                   err=err), 1, "a working folder is initialised once")
 
 
+class TestConfigCommands(FabricCase):
+
+    def test_config_set_sends_the_lists_of_the_file_and_applies_only_with_yes(self):
+        path = self.tmp / "config.toml"
+        path.write_text('[texo]\norganisation = "acme"\n\n[[pack]]\nname = "bakery"\nversion = "v1.2.0"\n')
+        payload = cli.config_payload(path, apply=False)
+        self.assertEqual(payload, {"apply": False, "packs": [{"name": "bakery", "version": "v1.2.0"}], "slug": "acme"})
+        self.assertNotIn("threads", payload, "a list left out of the file is not touched in the hub")
+        argv = ["--root", str(self.root), "config-set", str(path), "--apply"]
+        self.assertEqual(cli.main(argv, out=io.StringIO(), err=io.StringIO()), 2, "--apply needs --yes")
+        (self.tmp / "empty.toml").write_text("# nothing\n")
+        with self.assertRaisesRegex(ConfigError, "nothing to set"):
+            cli.config_payload(self.tmp / "empty.toml", apply=True)
+        answer = {"applied": False, "counts": {"created": 1}, "items": [
+            {"kind": "pack", "key": "bakery", "status": "created"}, {"kind": "thread", "key": "x", "status": "unchanged"}]}
+        self.assertEqual(cli.render_changes(answer).splitlines(), ["1 created (dry run: texo config-set <file> --apply --yes)",
+                                                                   "  [created] pack bakery"])
+
+
 class TestSeed(FabricCase):
 
     def test_the_seed_of_the_packs_goes_to_the_hub_as_a_dry_run_then_applied(self):

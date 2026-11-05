@@ -195,6 +195,8 @@ dell'organizzazione nel hub, con l'articolo letto, la data di verifica e una sca
 | `texo thread <id> ls\|read\|search ...` | legge una fonte `git-remote` al `ref` fissato |
 | `texo seed [--apply --yes]` | il seed dei pacchetti nel hub e i canali `hub_channel` (`docs/memoria.md`, «Seed di un pacchetto») |
 | `texo where [--pack <nome>]` | la cartella del core, o di un pacchetto installato |
+| `texo config` | la configurazione dell'organizzazione nel hub: slug, pacchetti, fili |
+| `texo config-set <file> [--apply --yes]` | per gli amministratori: il hub dice ciò che dice un file TOML con `[[pack]]` e `[[thread]]` (una lista assente non si tocca); prima l'anteprima, con `--apply --yes` la scrittura |
 | `texo run-thread <id>` | lo avviano gli assistenti: un filo MCP con le sue credenziali |
 
 ## Per l'agente
