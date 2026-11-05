@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """check_okf.py — the knowledge of an industry as an Open Knowledge Format bundle (CI).
 
-knowledge/ is the procedural memory of an industry; its names follow Open Knowledge Format
+The procedural memory of an industry (INDEX.md, conventions/, reference/, playbooks/ at its root, or a knowledge/
+folder) follows Open Knowledge Format
 (OKF v0.2, https://github.com/GoogleCloudPlatform/open-knowledge-format; docs/memoria.md,
 «Nomenclatura»), like the memory the hub serves. Every Markdown file is a concept:
 
@@ -92,16 +93,29 @@ def check_file(path, rel):
             errors.append(f"{rel}: no {key}")
     if "tags" in meta and not (isinstance(meta["tags"], list) and all(isinstance(t, str) for t in meta["tags"])):
         errors.append(f"{rel}: tags is a list of strings")
-    if rel == f"{BUNDLE}/INDEX.md" and meta.get("okf_version") != OKF_VERSION:
+    if rel in (f"{BUNDLE}/INDEX.md", "INDEX.md") and meta.get("okf_version") != OKF_VERSION:
         errors.append(f"{rel}: the root index carries okf_version {OKF_VERSION!r}")
     if path.name == "index.md":
         errors.append(f"{rel}: index.md is reserved by OKF; the index of knowledge/ is INDEX.md")
     return errors
 
 
+# An industry keeps its knowledge at the root of its repository: INDEX.md and these folders.
+INDUSTRY_FOLDERS = ("conventions", "reference", "playbooks")
+
+
+def bundle_files(root):
+    """The Markdown files of the bundle: knowledge/ of a repository, or the knowledge of an industry."""
+    if (root / BUNDLE).is_dir():
+        return sorted((root / BUNDLE).rglob("*.md"))
+    if not (root / "INDEX.md").is_file():
+        return []
+    return [root / "INDEX.md"] + sorted(p for folder in INDUSTRY_FOLDERS for p in (root / folder).rglob("*.md"))
+
+
 def check(root):
     errors = []
-    for path in sorted((root / BUNDLE).rglob("*.md")):
+    for path in bundle_files(root):
         errors += check_file(path, path.relative_to(root).as_posix())
     return errors
 
@@ -195,15 +209,18 @@ def write(root, out=sys.stdout):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="knowledge/ as an Open Knowledge Format bundle.")
+    parser = argparse.ArgumentParser(description="the knowledge of a repository as an Open Knowledge Format bundle.")
     parser.add_argument("--write", action="store_true", help="give a frontmatter to the files that have none")
     parser.add_argument("--root", default=".", help="the repository (default: the current directory)")
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
-    if not (root / BUNDLE).is_dir():
-        print(f"no {BUNDLE}/: nothing to check")
+    if not bundle_files(root):
+        print(f"no {BUNDLE}/ and no INDEX.md: nothing to check")
         return 0
     if args.write:
+        if not (root / BUNDLE).is_dir():
+            print("--write derives the frontmatter of knowledge/ only: write it by hand in an industry")
+            return 2
         write(root)
     errors = check(root)
     for error in errors:

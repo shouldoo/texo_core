@@ -19,6 +19,18 @@ class CheckOkfTest(unittest.TestCase):
             path.write_text(text, encoding="utf-8")
         return root
 
+    def test_the_knowledge_of_an_industry_at_its_root(self):
+        root = self.bundle({
+            "INDEX.md": '---\ntype: "Index"\ntitle: "I"\ndescription: "d"\n---\n# I\n',
+            "reference/v20/models.md": '---\ntype: "Reference"\ntitle: "M"\ndescription: "m"\n---\n',
+            "playbooks/x.md": "# X\n",
+            "README.md": "# not part of the bundle\n",
+        })
+        errors = check_okf.check(root)
+        self.assertIn("INDEX.md: the root index carries okf_version '0.2'", errors)
+        self.assertIn("playbooks/x.md: no frontmatter (python3 scripts/check_okf.py --write)", errors)
+        self.assertEqual(len(errors), 2)
+
     def test_a_repository_without_knowledge_passes(self):
         self.assertEqual(check_okf.main(["--root", tempfile.mkdtemp()]), 0)
 
