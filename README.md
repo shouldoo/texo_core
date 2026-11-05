@@ -64,7 +64,7 @@ core/bin/texo doctor                  # the hub, every thread and every credenti
 
 | Command | What |
 |---|---|
-| `mount [--yes]` | checks the versions of core and industries and the declaration of every thread; clones the git-mirror sources; installs pinned CLIs (with `--yes`); writes the MCP configuration of Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) and the Antigravity profile; links the skills of core, industries and customer; generates `.texo/THREADS.md` |
+| `mount [--yes]` | checks the versions of core and industries and the declaration of every thread; clones the git-mirror sources (only their `paths` when declared); installs pinned CLIs (with `--yes`); creates the working folders the industries declare; writes the MCP configuration of Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) and the Antigravity profile; links the skills of core, threads, industries and customer; generates `.texo/THREADS.md` |
 | `doctor` | checks the hub, every thread and every credential, without showing it |
 | `threads` | the threads of the fabric (also the tool `threads` of the MCP server `memoria`) |
 | `thread <id> ls\|read\|search` | reads a git-remote source at its pinned ref, without cloning it |
@@ -85,7 +85,7 @@ Outside a fabric the CLI takes the hub from `TEXO_HUB_URL` and `TEXO_HUB_TOKEN`.
 | `skills/` | `texo-sessione`, `memoria-consolidamento`, `memoria-ingestione`, `memoria-fonti` |
 | `playbooks/` | a new memory system, its profile, the evaluation of the memory, the local coordination Odoo, the review of the knowledge |
 | `scripts/` | `ingest.py` (documents into the memory, Docling or light converters), `eval_memoria.py` and `eval_varianti.py` (the measure of the search), the checks every Texo repository runs (`check_isolation.py`, `check_agents.py`, `check_skills.py`, `check_okf.py`, `check_attribution.py`) |
-| `setup/` | `bootstrap.sh`, `install-git-hooks.sh`, `coordinamento-up.sh` (a local coordination Odoo with texo_hub at a release), `install-docling.sh` |
+| `setup/` | `bootstrap.sh`, `install-git-hooks.sh`, `coordinamento-up.sh` (a local coordination Odoo with texo_hub at a release), `load-demo.sh` (a demo customer into a test database, with `scripts/load_demo.py`), `install-docling.sh` |
 
 ## Checks
 

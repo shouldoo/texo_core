@@ -80,6 +80,8 @@ guide = "Documenti dei clienti: leggi, non copiare in locale; registra nel hub l
 | `guide` | tutti | quando usarlo e i suoi limiti: l'agente lo legge nell'indice dei fili |
 | `assistants` | MCP | facoltativo: per quali assistenti montarlo (`claude`, `gemini`, `antigravity`) |
 | `repo`, `ref`, `depth` | git | il repository (`host/owner/nome` o un URL) e il tag o commit fissato |
+| `paths` | `git-mirror` | facoltativo: le sole cartelle da scaricare (checkout parziale), per un repository grande di cui serve una parte |
+| `skills` | `git-mirror` | facoltativo: la cartella del mirror che contiene skill (`<nome>/SKILL.md`), collegate da `texo mount` come quelle di core e industry; dentro `paths`, se `paths` c'è |
 | `url` | `http`, `mcp-http` | l'indirizzo |
 | `hub_channel`, `name`, `channel_kind`, `every_days`, `feeds` | `http` | con `hub_channel = true` il filo diventa un canale delle fonti esterne del hub (`texo_sources`), registrato da `texo seed` |
 | `command`, `args`, `env` | `mcp-stdio`, `cli` | il comando, i suoi argomenti, le variabili d'ambiente (una credenziale come `env:NOME`) |
@@ -118,7 +120,7 @@ ancora.
 | Driver | Per | Montaggio (`texo mount`) | Diagnosi (`texo doctor`) | Come lo usa l'agente |
 |---|---|---|---|---|
 | `git-remote` | fonti in un repository letto da remoto | niente da installare | `git ls-remote` del `ref` | `texo thread <id> ls [percorso]`, `read <percorso>`, `search <parole>`, sempre al `ref` fissato |
-| `git-mirror` | fonti da leggere con `rg` in locale | clone shallow al `ref` in `$TEXO_SHARED_DIR/mirrors/<id>` (default `~/.local/share/texo`), una copia per macchina condivisa dai tessuti; riallineato quando il `ref` cambia | la copia esiste ed è al `ref` | `rg` nella cartella, in sola lettura |
+| `git-mirror` | fonti da leggere con `rg` in locale, skill pubblicate da terzi | clone shallow al `ref` in `$TEXO_SHARED_DIR/mirrors/<id>` (default `~/.local/share/texo`), una copia per macchina condivisa dai tessuti, solo le `paths` se dichiarate; riallineato quando il `ref` cambia | la copia esiste, è al `ref` fissato e contiene la cartella `skills` | `rg` nella cartella, in sola lettura; le sue skill come le altre |
 | `http` | documentazione o feed | registrazione; con `hub_channel` un canale del hub (`texo seed`) | l'indirizzo risponde | il suo indirizzo |
 | `mcp-stdio` | strumenti e connettori MCP locali | voce `texo run-thread <id>` nella configurazione di ogni assistente | avvio del server e risposta a `initialize` | gli strumenti del server MCP `<id>` |
 | `mcp-http` | strumenti e connettori MCP remoti | come `mcp-stdio`: `texo run-thread` fa da ponte stdio → Streamable HTTP, con la credenziale come bearer | la credenziale c'è, l'indirizzo risponde | come sopra |
@@ -154,7 +156,7 @@ si pubblica come server MCP a sé, che B monta come filo.
 
 | Comando | Che cosa fa |
 |---|---|
-| `texo mount [--yes]` | legge `texo.toml` e i manifest degli industry; verifica la versione del core, quelle degli industry, gli industry richiesti e le dichiarazioni dei fili (con un errore non monta nulla); clona i `git-mirror`; installa i `cli` mancanti solo con `--yes`; scrive la configurazione MCP di Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) e del profilo Antigravity del customer se esiste, togliendo i fili rimossi e lasciando ciò che la persona ha aggiunto; collega le skill di core, industry e customer in `.agents/skills/` e `.claude/skills/` (a parità di nome vince il customer, poi l'industry); genera `.texo/THREADS.md` e `.texo/threads.json`; aggiunge i file generati al `.gitignore` |
+| `texo mount [--yes]` | legge `texo.toml` e i manifest degli industry; verifica la versione del core, quelle degli industry, gli industry richiesti e le dichiarazioni dei fili (con un errore non monta nulla); clona i `git-mirror`; installa i `cli` mancanti solo con `--yes`; scrive la configurazione MCP di Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) e del profilo Antigravity del customer se esiste, togliendo i fili rimossi e lasciando ciò che la persona ha aggiunto; collega le skill di core, dei fili con `skills`, degli industry e del customer in `.agents/skills/` e `.claude/skills/` (a parità di nome vince il customer, poi l'industry, poi il filo); crea le cartelle di lavoro che gli industry dichiarano (`work_dirs` in `texo_industry.toml`); genera `.texo/THREADS.md` e `.texo/threads.json`; aggiunge i file generati al `.gitignore` |
 | `texo doctor` | le stesse verifiche della dichiarazione, il token del hub (senza mostrarlo), il hub che risponde, e la diagnosi di ogni filo |
 | `texo threads` | i fili montati, con tipo, `data_class`, `writes`, stato e `guide`; è anche lo strumento `threads` del server MCP `memoria` |
 | `texo thread <id> ls\|read\|search ...` | legge una fonte `git-remote` al `ref` fissato |

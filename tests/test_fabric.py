@@ -161,6 +161,10 @@ class TestThreadDeclarations(unittest.TestCase):
         self.assertTrue(self.errors(driver="mcp-stdio", command="srv", env={"API_TOKEN": "abc"}))
         self.assertTrue(self.errors(driver="git-remote"), "a git source needs repo and ref")
         self.assertTrue(self.errors(data_class="secret"))
+        self.assertTrue(self.errors(skills="skills"), "skills belong to a git-mirror")
+        self.assertTrue(self.errors(driver="git-mirror", repo="r", ref="v1", paths=["docs"], skills="skills"),
+                        "skills outside the paths checked out")
+        self.assertFalse(self.errors(driver="git-mirror", repo="r", ref="v1", paths=["skills"], skills="skills"))
 
 
 class TestMount(FabricCase):
@@ -212,6 +216,32 @@ class TestMount(FabricCase):
         self.assertTrue(set(mount.IGNORED) <= set(ignored))
         mount.mount(self.fabric(), out=io.StringIO())
         self.assertEqual((self.root / ".gitignore").read_text().splitlines(), ignored, "added once")
+
+    def test_a_sparse_mirror_brings_its_skills_and_an_industry_its_work_folders(self):
+        (self.mirror / "skills" / "upstream-guide").mkdir(parents=True)
+        (self.mirror / "skills" / "upstream-guide" / "SKILL.md").write_text("---\nname: upstream-guide\ndescription: d\n---\n")
+        (self.mirror / "big").mkdir()
+        (self.mirror / "big" / "file.txt").write_text("not wanted")
+        git("add", ".", cwd=self.mirror)
+        git("commit", "--quiet", "-m", "skills", cwd=self.mirror)
+        git("tag", "v2", cwd=self.mirror)
+        toml = (self.root / "texo.toml").read_text().replace(
+            'ref = "v1"', 'ref = "v2"\npaths = ["skills"]\nskills = "skills"')
+        (self.root / "texo.toml").write_text(toml)
+        manifest = self.root / "industry" / "bakery" / "texo_industry.toml"
+        manifest.write_text(manifest.read_text().replace('core = ', 'work_dirs = ["projects", "modules/V20"]\ncore = '))
+        out = io.StringIO()
+        self.assertEqual(mount.mount(self.fabric(), out=out), 0, out.getvalue())
+        mirror = self.tmp / "shared" / "mirrors" / "laws"
+        self.assertTrue((mirror / "skills" / "upstream-guide" / "SKILL.md").is_file())
+        self.assertFalse((mirror / "big").exists(), "only the paths asked are checked out")
+        self.assertTrue((self.root / ".agents" / "skills" / "upstream-guide" / "SKILL.md").is_file())
+        self.assertTrue((self.root / "projects").is_dir() and (self.root / "modules" / "V20").is_dir())
+        self.assertIn("modules/V20/", (self.root / ".gitignore").read_text().splitlines())
+        self.assertEqual(threads.doctor_git_mirror(self.fabric().threads[0])[0], "ok")
+        (self.root / "texo.toml").write_text(toml.replace('ref = "v2"', 'ref = "v1"'))
+        self.assertEqual(threads.doctor_git_mirror(self.fabric().threads[0])[0], "warning",
+                         "a mirror at another ref than the pinned one")
 
     def test_a_declaration_error_mounts_nothing(self):
         (self.root / "texo.toml").write_text((self.root / "texo.toml").read_text().replace(

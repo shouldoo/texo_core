@@ -70,6 +70,12 @@ def check(thread):
         warning("a tool that receives the data of customers: check where they go")
     if not (thread.get("guide") or "").strip():
         warning("no guide: the agent will not know when to use it and its limits")
+    for key in ("paths", "skills"):
+        if thread.get(key) and driver != "git-mirror":
+            error(f"{key} is for a git-mirror thread")
+    if thread.get("skills") and thread.get("paths") and not any(
+            str(thread["skills"]).startswith(str(p).rstrip("/")) for p in thread["paths"]):
+        error("skills is not inside the paths checked out")
     if driver in ("git-remote", "git-mirror") and thread.get("ref") in ("main", "master", "HEAD"):
         warning("ref is a moving branch: pin a tag or a commit")
     if driver == "mcp-stdio" and thread.get("command") in ("npx", "uvx", "pipx") and not any(
@@ -103,40 +109,47 @@ def mirror_dir(thread):
 
 
 def mount_git_mirror(thread):
-    """A shallow clone at the pinned ref, refreshed when the ref changes."""
+    """A shallow clone at the pinned ref (a tag, a branch or a commit), refreshed when the ref changes; with
+    paths, only those folders are checked out and the other files are never downloaded."""
     path = mirror_dir(thread)
     url, ref = git_url(thread["repo"]), thread["ref"]
-    depth = str(thread.get("depth", 1))
-    if not (path / ".git").is_dir():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        result = run(["git", "clone", "--quiet", "--depth", depth, "--branch", ref, url, str(path)])
-        if result.returncode:
-            # a commit cannot be cloned by name: init, fetch the commit, check it out
-            path.mkdir(parents=True, exist_ok=True)
-            steps = [["git", "init", "--quiet"], ["git", "remote", "add", "origin", url],
-                     ["git", "fetch", "--quiet", "--depth", "1", "origin", ref],
-                     ["git", "checkout", "--quiet", "FETCH_HEAD"]]
-            for step in steps:
-                result = run(step, cwd=path)
-                if result.returncode:
-                    shutil.rmtree(path, ignore_errors=True)
-                    return "error", f"clone of {thread['repo']} at {ref} failed: {result.stderr.strip()[:200]}"
-        return "ok", f"cloned at {ref} in {path}"
-    if run(["git", "fetch", "--quiet", "--depth", depth, "origin", ref], cwd=path).returncode:
+    fresh = not (path / ".git").is_dir()
+    if fresh:
+        path.mkdir(parents=True, exist_ok=True)
+        for step in (["git", "init", "--quiet"], ["git", "remote", "add", "origin", url]):
+            run(step, cwd=path)
+    paths = thread.get("paths") or []
+    if paths:
+        run(["git", "sparse-checkout", "set", *paths], cwd=path)
+    elif not fresh:
+        run(["git", "sparse-checkout", "disable"], cwd=path)
+    fetch = ["git", "fetch", "--quiet", "--depth", str(thread.get("depth", 1))]
+    fetch += ["--filter=blob:none"] if paths else []
+    result = run([*fetch, "origin", ref], cwd=path)
+    if result.returncode:
+        if fresh:
+            shutil.rmtree(path, ignore_errors=True)
+            return "error", f"clone of {thread['repo']} at {ref} failed: {result.stderr.strip()[:200]}"
         return "warning", f"{path} kept: fetch of {ref} failed (offline?)"
-    run(["git", "checkout", "--quiet", "--force", "FETCH_HEAD"], cwd=path)
-    return "ok", f"at {ref} in {path}"
+    result = run(["git", "checkout", "--quiet", "--force", "FETCH_HEAD"], cwd=path)
+    if result.returncode:
+        return "error", f"checkout of {ref} in {path} failed: {result.stderr.strip()[:200]}"
+    (path / ".git" / "texo-ref").write_text(ref + "\n", encoding="utf-8")
+    return "ok", f"{'cloned' if fresh else 'at'} {ref} in {path}"
 
 
 def doctor_git_mirror(thread):
     path = mirror_dir(thread)
     if not (path / ".git").is_dir():
         return "error", f"not mounted: {path} is missing (texo mount)"
+    marker = path / ".git" / "texo-ref"
+    mounted = marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
+    if mounted != thread["ref"]:
+        return "warning", f"{path} is at {mounted or 'an unknown ref'}, texo.toml pins {thread['ref']}: texo mount"
     head = run(["git", "rev-parse", "HEAD"], cwd=path).stdout.strip()
-    wanted = run(["git", "rev-parse", f"{thread['ref']}^{{commit}}"], cwd=path).stdout.strip()
-    if wanted and head != wanted:
-        return "warning", f"{path} is at {head[:12]}, the ref {thread['ref']} is {wanted[:12]}: texo mount"
-    return "ok", f"{path} at {head[:12]}"
+    if thread.get("skills") and not (path / thread["skills"]).is_dir():
+        return "error", f"{path} has no {thread['skills']}/: check skills and paths"
+    return "ok", f"{path} at {thread['ref']} ({head[:12]})"
 
 
 def doctor_git_remote(thread):
