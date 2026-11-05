@@ -11,7 +11,7 @@ import urllib.error
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from texo import cli  # noqa: E402
+from texo import __version__, cli  # noqa: E402
 from texo import hub as ctx  # noqa: E402
 
 CWD = os.getcwd()
@@ -268,6 +268,7 @@ class CtxTest(unittest.TestCase):
     def test_mcp_dispatch_and_confirmation(self):
         init = ctx.handle_message(self.hub, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}})
         self.assertEqual(init["result"]["serverInfo"]["name"], "memoria")
+        self.assertEqual(init["result"]["serverInfo"]["version"], __version__, "the version of the core")
         # the rules of the session are the instructions of the server: no call needed to read them
         self.assertTrue(init["result"]["instructions"].startswith("Working memory\n\nMy role in the hub: lead.\n\n"))
         self.assertIsNone(ctx.handle_message(self.hub, {"jsonrpc": "2.0", "method": "notifications/initialized"}))

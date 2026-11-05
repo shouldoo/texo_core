@@ -41,3 +41,32 @@ class LoadDemoTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_the_load_waits_for_the_embedding_service(self):
+        class Answer:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        calls, sleeps = [], []
+
+        def starting(url, timeout=None):
+            calls.append(url)
+            if len(calls) < 3:
+                raise load_demo.urllib.error.URLError("connection refused")
+            return Answer()
+
+        self.assertTrue(load_demo.service_ready("http://tei:80", wait=30, step=5, opener=starting, sleep=sleeps.append))
+        self.assertEqual(calls, ["http://tei:80/health"] * 3)
+        self.assertEqual(sleeps, [5, 5])
+
+        def down(url, timeout=None):
+            raise OSError("no route to host")
+
+        sleeps.clear()
+        self.assertFalse(load_demo.service_ready("http://tei:80", wait=10, step=5, opener=down, sleep=sleeps.append))
+        self.assertEqual(len(sleeps), 2, "it gives up after the wait")

@@ -8,6 +8,8 @@
 # seed.toml, applied first (scripts/load_demo.py). The tokens the load generates go to
 # ~/.config/texo/<organisation>.env (mode 600, never printed: TEXO_HUB_TOKEN is the lead's, TEXO_HUB_TOKEN_<ROLE>
 # the others'), the question set with the ids of the database to .texo/eval-<database>.json. Idempotent.
+# The vectors (texo_vector): the tei service of the stack, or the one named by TEXO_VECTOR_ENDPOINT and TEXO_VECTOR_API
+# (tei or llamacpp: llama.cpp server on a GPU through Vulkan, playbooks/coordinamento-locale.md).
 set -euo pipefail
 
 CORE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
@@ -36,6 +38,7 @@ trap 'rm -f "$PROGRAM"' EXIT
 # SEEDS and TEXTS, then the data, then the logic: one program for odoo shell
 PYTHONPATH="$CORE" python3 - "$ROOT" "$PACK" "$PACK_DIR" > "$PROGRAM" <<'PY'
 import json
+import os
 import pathlib
 import sys
 
@@ -51,6 +54,10 @@ print(f"SEEDS = {json.dumps(seeds, ensure_ascii=False)!r}")
 print("SEEDS = __import__('json').loads(SEEDS)")
 print(f"TEXTS = {json.dumps(texts, ensure_ascii=False)!r}")
 print("TEXTS = __import__('json').loads(TEXTS)")
+vector = {key: os.environ[name] for key, name in (("endpoint", "TEXO_VECTOR_ENDPOINT"), ("api", "TEXO_VECTOR_API"))
+          if os.environ.get(name)}
+print(f"VECTOR = {json.dumps(vector)!r}")
+print("VECTOR = __import__('json').loads(VECTOR)")
 PY
 cat "${PACK_DIR}/demo/data.py" "${CORE}/scripts/load_demo.py" >> "$PROGRAM"
 

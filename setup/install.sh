@@ -22,10 +22,10 @@ VERSION="${TEXO_VERSION:-$(git ls-remote --tags --refs --sort=-v:refname "$REPO"
 
 if [ -d "${HOME_DIR}/.git" ]; then
     git -C "$HOME_DIR" fetch --quiet --depth 1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
-    git -C "$HOME_DIR" checkout --quiet "$VERSION"
+    git -C "$HOME_DIR" -c advice.detachedHead=false checkout --quiet "$VERSION"
 else
     mkdir -p "$(dirname "$HOME_DIR")"
-    git clone --quiet --depth 1 --branch "$VERSION" "$REPO" "$HOME_DIR"
+    git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$VERSION" "$REPO" "$HOME_DIR"
 fi
 mkdir -p "$BIN_DIR"
 ln -sfn "${HOME_DIR}/bin/texo" "${BIN_DIR}/texo"

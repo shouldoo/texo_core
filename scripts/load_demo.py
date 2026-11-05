@@ -14,7 +14,8 @@ terminal:
 
 The wrapper pipes into `odoo shell` of the coordination stack: SEEDS (the hub/seed.toml of the industries of the
 fabric, applied first as the administrator, so the activities and sections the data use exist), TEXTS (the
-converted texts of demo/texts/*.md, for the documents that name a text_file), the data file and this file. It
+converted texts of demo/texts/*.md, for the documents that name a text_file), VECTOR (the embedding service named
+by TEXO_VECTOR_ENDPOINT and TEXO_VECTOR_API, when the person gives one), the data file and this file. It
 reads the lines that start with `@@`: `@@TOKEN <role> <key>` goes to ~/.config/texo/<customer>.env (mode 600),
 `@@EVAL <json>` to .texo/eval-<database>.json, the question set of scripts/eval_memoria.py with the ids of this
 database. Idempotent: records are found by login, reference, name or text; the demo tokens are revoked and
@@ -31,7 +32,13 @@ import hashlib
 import html
 import json
 import re
+import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
+
+# how long the load waits for an embedding service that is still starting: TEI downloads its model at the first start
+VECTOR_WAIT = 300
 
 try:
     import demo_data as data
@@ -39,6 +46,20 @@ except ModuleNotFoundError:
     # piped into odoo shell behind demo/data.py (setup/load-demo.sh): its names are already here
     import types
     data = types.SimpleNamespace(**globals())
+
+
+def service_ready(url, wait=VECTOR_WAIT, step=5, opener=urllib.request.urlopen, sleep=time.sleep):
+    """Whether the embedding service answers GET /health (TEI and llama.cpp server) within `wait` seconds."""
+    for attempt in range(max(1, int(wait // step) + 1)):
+        try:
+            with opener(f"{url}/health", timeout=step) as answer:
+                if answer.status == 200:
+                    return True
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+        if attempt * step < wait:
+            sleep(step)
+    return False
 
 
 def pdf_bytes(title, lines):
@@ -464,16 +485,31 @@ class Seeder:
         return eval_set
 
     def vectors(self):
-        """Where the hub has texo_vector: the embedding service of the stack (http://tei:80) when
-        none is set, then the vectors of what was seeded, so the measure can run at once. The texts stay
-        on the machine: the service is the tei container of the compose network."""
+        """Where the hub has texo_vector: the embedding service the person named (VECTOR: endpoint and api), else
+        the one already set, else the tei container of the stack (http://tei:80); then, once the service answers,
+        the vectors of what was seeded, so the measure can run at once. A service that does not answer within
+        VECTOR_WAIT leaves them to the cron of texo_vector. The texts go only to a service on the local network."""
         if not self.env["ir.module.module"].sudo().search_count([("name", "=", "texo_vector"),
                                                                  ("state", "=", "installed")]):
             return
         Params = self.env["ir.config_parameter"].sudo()
-        if not Params.get_str("texo_vector.endpoint"):
+        vector = globals().get("VECTOR") or {}
+        if vector.get("endpoint"):
+            Params.set_str("texo_vector.endpoint", vector["endpoint"])
+        elif not Params.get_str("texo_vector.endpoint"):
             Params.set_str("texo_vector.endpoint", "http://tei:80")
-        self.summary["vectors"] = self.env["memory.embedding"]._cron_embed()
+        if vector.get("api"):
+            Params.set_str("texo_vector.api", vector["api"])
+        Embedding = self.env["memory.embedding"]
+        url = Embedding._endpoint()
+        if not url:
+            return
+        if not service_ready(url):
+            print(f"[info] the embedding service at {url} does not answer yet: the cron of texo_vector computes the "
+                  "vectors within fifteen minutes of its start")
+            self.summary["vectors"] = "left to the cron"
+            return
+        self.summary["vectors"] = Embedding._cron_embed()
 
     def tokens(self):
         Keys = self.env["res.users.apikeys"]
