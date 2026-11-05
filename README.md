@@ -86,7 +86,7 @@ and an expiry.
 
 | Command | What |
 |---|---|
-| `init <hub url> <organisation>` | writes `texo.toml`, trusts the folder for Claude Code (and an Antigravity profile when `agy` is installed), then mounts |
+| `init <hub url> <organisation>` | writes `texo.toml`, trusts the folder and its MCP server `memoria` for Claude Code (the MCP servers of the threads wait for the approval of the person; and an Antigravity profile when `agy` is installed), then mounts |
 | `mount [--yes] [--offline]` | reads the configuration of the hub; installs the packs; checks their versions, the core they need and every thread; clones the git-mirror sources (only their `paths` when declared); installs pinned CLIs (with `--yes`); writes the MCP configuration of Claude Code, Gemini CLI and the Antigravity profile; links the skills of core, threads, packs and folder; creates the working folders of the packs; writes `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.texo/THREADS.md` |
 | `doctor` | checks the hub, every pack, thread and credential, without showing a credential |
 | `threads` | the threads of the folder (also the tool `threads` of the MCP server `memoria`) |
