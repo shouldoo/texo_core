@@ -36,7 +36,8 @@ def main(argv=None) -> int:
             ["gh", "pr", "list", "-R", repo, "--state", "all", "--limit", "500", "--json", "number,body"],
             capture_output=True, text=True, check=True).stdout)
         todo = [pr for pr in prs if check_attribution.offending(pr["body"] or "")]
-        print(f"{repo}: {len(todo)} pull requests to clean: {', '.join(f'#{pr['number']}' for pr in todo)}")
+        numbers = ", ".join(f"#{pr['number']}" for pr in todo)
+        print(f"{repo}: {len(todo)} pull requests to clean: {numbers}")
         if not args.apply:
             continue
         backup.mkdir(parents=True, exist_ok=True)
