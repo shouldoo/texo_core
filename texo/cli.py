@@ -1,13 +1,15 @@
 """texo: the command line of Texo.
 
-The commands of the memory (texo/hub.py) talk to the hub as the person; the commands of the fabric work
-on the customer repository the current directory belongs to (or --root):
+The commands of the memory (texo/hub.py) talk to the hub as the person; the other commands work
+on the working folder the current directory belongs to (or --root):
 
-    texo mount [--yes]            compose the fabric: threads, assistant configuration, .texo/THREADS.md
+    texo init <hub url> <organisation>   make the current folder a working folder of the organisation, then mount
+    texo mount [--yes] [--offline]   the configuration of the hub: packs, threads, assistants, skills, AGENTS.md
     texo doctor                   check that the hub and every thread answer and every credential is there
-    texo threads                  the threads of the fabric (also a tool of the MCP server memoria)
+    texo threads                  the threads of the folder (also a tool of the MCP server memoria)
     texo thread <id> ls|read|search ...   read a git-remote source at its pinned ref, without cloning it
-    texo seed [--apply --yes]     the seed of the industries into the hub (administrators)
+    texo seed [--apply --yes]     the seed of the packs into the hub (administrators)
+    texo where [--pack <name>]    where the core (or an installed pack) is on this machine
     texo run-thread <id>          started by the assistants: an MCP thread with its credentials
     texo mcp                      the MCP server memoria over stdio
 """
@@ -15,18 +17,25 @@ import base64
 import json
 import os
 import sys
+from pathlib import Path
 
-from . import bridge, hub, mount, seed, threads
-from .config import ConfigError, Fabric, find_root, hub_settings
+from . import bridge, hub, mount, packs, seed, setup_assistants, threads
+from .config import ConfigError, Fabric, find_root, hub_settings, write_texo_toml
 
-LOCAL = ("mount", "doctor", "threads", "thread", "run-thread", "version")
+LOCAL = ("init", "mount", "doctor", "threads", "thread", "run-thread", "version", "where")
 
 
 def extend(sub):
-    p = sub.add_parser("mount", help="compose the fabric: threads, assistants, .texo/THREADS.md")
+    p = sub.add_parser("init", help="make the current folder a working folder of the organisation, then mount")
+    p.add_argument("hub_url")
+    p.add_argument("organisation", help="the slug of the organisation: ~/.config/texo/<slug>.env")
+    p = sub.add_parser("mount", help="the configuration of the hub: packs, threads, assistants, skills, AGENTS.md")
     p.add_argument("--yes", action="store_true", help="run the install commands of the cli threads")
+    p.add_argument("--offline", action="store_true", help="the configuration read last time, without the hub")
+    p = sub.add_parser("where", help="where the core, or an installed pack, is on this machine")
+    p.add_argument("--pack")
     sub.add_parser("doctor", help="check the hub, the threads and the credentials")
-    sub.add_parser("threads", help="the threads of the fabric, as texo mount left them")
+    sub.add_parser("threads", help="the threads of the folder, as texo mount left them")
     p = sub.add_parser("thread", help="read a git-remote source at its pinned ref")
     p.add_argument("thread_id")
     p.add_argument("action", choices=("ls", "read", "search"))
@@ -42,7 +51,7 @@ def extend(sub):
 def fabric_of(args):
     root = find_root(args.root)
     if not root:
-        raise ConfigError("no texo.toml above the current directory: run from a customer repository or pass --root")
+        raise ConfigError("no texo.toml above the current directory: run texo init in a working folder, or pass --root")
     return Fabric(root)
 
 
@@ -51,9 +60,24 @@ def local(args, out, err):
         from . import __version__
         out.write(f"texo {__version__}\n")
         return 0
+    if args.command == "init":
+        root = Path(args.root or os.getcwd()).resolve()
+        write_texo_toml(root, args.organisation, args.hub_url)
+        out.write(f"[ok] {root / 'texo.toml'}\n")
+        setup_assistants.trust(root, args.organisation, out)
+        return mount.mount(Fabric(root), out=out)
+    if args.command == "where" and not args.pack:
+        out.write(f"{Path(__file__).resolve().parent.parent}\n")
+        return 0
     fabric = fabric_of(args)
+    if args.command == "where":
+        pack = next((p for p in fabric.packs if p.get("name") == args.pack), None)
+        if not pack:
+            raise ConfigError(f"no pack {args.pack} in the configuration of the organisation")
+        out.write(f"{packs.folder(fabric, pack)}\n")
+        return 0
     if args.command == "mount":
-        return mount.mount(fabric, allow_install=args.yes, out=out)
+        return mount.mount(fabric, allow_install=args.yes, out=out, offline=args.offline)
     if args.command == "doctor":
         return mount.doctor(fabric, out=out)
     if args.command == "threads":

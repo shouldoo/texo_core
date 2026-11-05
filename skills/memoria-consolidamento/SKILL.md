@@ -24,7 +24,7 @@ the writes go through the same client as any other write (the `texo` CLI, or the
 MCP tools `review`, `confirm`, `state`, `update`, `project`):
 
 ```bash
-CTX="core/bin/texo"              # from the root of the customer repository
+CTX="texo"              # from the working folder
 $CTX whoami                      # a member proposes, a lead decides
 $CTX review                      # the queue, deterministic
 ```
@@ -77,7 +77,7 @@ wait for the yes.
 
 Repeat `$CTX review` and say what remains. What was decided is in Odoo: nothing to
 write elsewhere. If a pattern repeats across projects (the same finding on three
-customers), propose a generic entry for the industry of the sector as a separate
+customers), propose a generic entry for the pack of the sector as a separate
 change, rewritten abstract and checked on a public source, with no customer in it.
 
 ## Safety & Invariants

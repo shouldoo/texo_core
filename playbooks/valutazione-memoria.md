@@ -8,10 +8,10 @@ giudica a occhio. La ricerca per significato si accende solo se questi numeri lo
 
 ## Il set di domande
 
-Un file JSON per set, scritto da chi conosce il lavoro, nella cartella `eval/` del repository customer
-(privato: nomina regole, task e update di progetti reali). I customer fittizi
-(`texo_customer_demo_<settore>`) tengono i loro set allo stesso modo, con i record attesi nominati per
-titolo: `eval_memoria.py` li risolve sul database della sessione.
+Un file JSON per set, scritto da chi conosce il lavoro, nella cartella `eval/` della cartella di lavoro o del
+repository privato dell'organizzazione (nomina regole, task e update di progetti reali). Il demo di un pacchetto
+porta i suoi set allo stesso modo, con i record attesi nominati per titolo: `eval_memoria.py` li risolve sul
+database della sessione.
 
 ```json
 [
@@ -58,7 +58,7 @@ titolo: `eval_memoria.py` li risolve sul database della sessione.
 ## Misurare
 
 ```bash
-python3 core/scripts/eval_memoria.py eval/<set>.json --k 5     # dalla radice del customer, come la persona
+python3 "$(texo where)/scripts/eval_memoria.py" eval/<set>.json --k 5   # dalla cartella di lavoro, come la persona
 # --mode lexical|semantic|hybrid: la stessa misura in un modo della ricerca (dove il hub ha
 # texo_vector; senza --mode vale il modo configurato nel hub, hybrid)
 # questions: 172  hit@5: 141/172  mrr: 0.75
@@ -101,8 +101,8 @@ la ricerca lessicale non chiude con parole chiave migliori.
 
 ## Cosa non fare
 - Non adattare le domande ai risultati: il set descrive come chiede la persona.
-- Non mettere il set di un customer reale in un repository che non sia il suo: contiene titoli e id di
-  regole, task e update di clienti. I set dei customer fittizi stanno nei loro repository.
+- Non mettere il set di un'organizzazione reale in un repository che non sia il suo: contiene titoli e id di
+  regole, task e update di clienti. I set dei demo stanno nei loro pacchetti.
 - Non scrivere le parafrasi guardando il record: si scrive il sintomo come lo direbbe chi chiama, poi si
   verifica che non condivida i lemmi.
 - Non misurare con il token di un'altra persona: i risultati seguono i suoi permessi.

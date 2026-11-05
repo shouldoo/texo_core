@@ -22,7 +22,7 @@ un'organizzazione cambia materiale (comincia a seguire la stampa, a lavorare su 
 Il guadagno dell'ibrido sulle parole curate cresce con la distanza di lessico fra chi scrive e chi cerca: è piccolo
 dove le persone usano le parole dei record, grande dove chi chiede usa parole sue. In ogni caso la **curatela** (note
 di sessione con parole chiave, sintesi dei documenti) rende più dei vettori presi da soli, e costa poco: si fa in
-ogni profilo. I customer demo degli industry portano set e misure di riferimento per il loro settore.
+ogni profilo. Il demo di un pacchetto porta set e misure di riferimento per il suo settore.
 
 ## Come si sceglie
 
@@ -85,7 +85,7 @@ Regole dell'organizzazione, in bozza, che il lead attiva (`texo note ... --kind 
 `analysis`). Prima di proporle, **rileggere con la persona i nomi delle attività** (*Memoria > Configurazione >
 Attività delle regole*): si possono rinominare con le sue parole («Comunicazione e stampa»); il codice resta lo
 stesso, e le regole già scritte continuano a valere. Regole come queste, se valgono per tutto un settore, stanno
-meglio nel seed del suo industry. Che cosa va in una regola e che cosa in una
+meglio nel seed del suo pacchetto. Che cosa va in una regola e che cosa in una
 procedura: `docs/memoria.md`, «Skill, procedure, regole». Testi di partenza, da adattare con la persona:
 
 | Gravità | Regola |
@@ -117,5 +117,5 @@ approvare, schede arrivate alla data di revisione (un anno), canali in ritardo.
 - Non accendere il riordino su una macchina senza acceleratore: 7-30 secondi a ricerca.
 - Non usare la memoria come archivio della stampa: il testo resta sul sito che lo pubblica, la memoria ne tiene la
   scheda.
-- Non copiare in core o industry canali, temi o regole di un'organizzazione: vivono nel suo hub. I canali che
-  vengono da un filo `http` del customer con `hub_channel = true` li registra `texo seed`.
+- Non copiare in core o nei pacchetti canali, temi o regole di un'organizzazione: vivono nel suo hub. I canali
+  che vengono da un filo `http` dell'organizzazione con `hub_channel = true` li registra `texo seed`.

@@ -2,14 +2,14 @@
 # install-git-hooks.sh — the git hooks of the core (setup/git-hooks) for a repository and its submodules
 # (core.hooksPath, local to each repository).
 #
-#   bash core/setup/install-git-hooks.sh [<repository>]     default: the customer repository above the core
+#   bash "$(texo where)/setup/install-git-hooks.sh" [<repository>]     default: the repository of the current folder
 #
 # Idempotent. A repository whose core.hooksPath already points elsewhere is left as it is, and said.
 set -euo pipefail
 
 CORE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 HOOKS="$CORE/setup/git-hooks"
-TARGET="${1:-$(git -C "$CORE/.." rev-parse --show-toplevel 2>/dev/null || echo "$CORE")}"
+TARGET="${1:-$(git rev-parse --show-toplevel)}"
 chmod +x "$HOOKS"/*
 
 install_in() {

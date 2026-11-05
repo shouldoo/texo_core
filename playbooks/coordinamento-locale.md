@@ -20,8 +20,7 @@ ${TEXO_STACK:-~/.local/share/texo/coordinamento}/    fuori da git
 └── backups/                             montato in /mnt/backups, per `odoo db dump`
 ```
 
-Lo stack nasce da `bash core/setup/coordinamento-up.sh` (dalla radice del customer; dentro `texo_core` è
-`setup/coordinamento-up.sh`): clona `texo_hub` al tag `${TEXO_HUB_REF:-20.0.1.0.0}`, genera `odoo.conf` e
+Lo stack nasce da `bash "$(texo where)/setup/coordinamento-up.sh"`: clona `texo_hub` al tag `${TEXO_HUB_REF:-20.0.1.0.0}`, genera `odoo.conf` e
 `pg_password` solo se mancano (senza stamparli), costruisce l'immagine `texo-coordinamento:20.0` (`odoo:20.0`
 più il pacchetto Python `markdown2`, senza il quale il modulo `mail` scrive un WARNING a ogni avvio) e avvia.
 Non tocca mai un database.
@@ -51,7 +50,7 @@ CONF=/etc/odoo/odoo.conf
 ### Avvio e stato
 
 ```bash
-bash core/setup/coordinamento-up.sh
+bash "$(texo where)/setup/coordinamento-up.sh"
 $C ps
 $C logs --tail 80 web
 ```
@@ -77,21 +76,26 @@ interno dell'organizzazione.
 Prima di `db drop` o `db load`: `$C stop web`, poi `$C start web`; con il server acceso i suoi cron lavorano
 sul database mentre il container usa-e-getta lo elimina o lo carica.
 
-### Il seed degli industry
+### Pacchetti, fili e seed
 
-Dopo la creazione, un amministratore del hub porta nel database ciò che gli industry del customer danno
+Dopo la creazione, un amministratore del hub sceglie i pacchetti di skill dell'organizzazione, con la versione,
+e i fili (*Impostazioni > Utenti > Texo Skill Packs*, *Texo Threads*, o la route `admin/config`). Poi, da una
+cartella di lavoro (`texo init`, sotto), `texo mount` li installa e porta nel database ciò che i pacchetti danno
 (attività, sezioni, regole, template di progetto):
 
 ```bash
-core/bin/texo seed                  # prova a secco: che cosa crea, aggiorna, tiene
-core/bin/texo seed --apply --yes    # dopo il sì della persona
+texo seed                  # prova a secco: che cosa crea, aggiorna, tiene
+texo seed --apply --yes    # dopo il sì della persona
 ```
+
+Il demo di un pacchetto (un'organizzazione inventata) si carica in un database di prova con
+`bash "$(texo where)/setup/load-demo.sh" <pacchetto> <database> [--create]`.
 
 ### Aggiornare i moduli a un nuovo tag
 
 ```bash
 # in $S/.env: TEXO_HUB_REF=<nuovo tag>, poi
-bash core/setup/coordinamento-up.sh
+bash "$(texo where)/setup/coordinamento-up.sh"
 $ODOO -c $CONF -d coord --db-filter '^coord$' -u <moduli cambiati> --http-interface=127.0.0.1 --stop-after-init
 $C restart web
 ```
@@ -104,26 +108,19 @@ della ricerca*: i testi in attesa devono scendere a ogni giro del cron.
 
 Il ruolo (Member, Lead, Administrator) è un gruppo Odoo: *Impostazioni > Utenti > privilegio Texo*. Il token
 lo crea la persona da *Preferenze > Sicurezza > Nuova chiave API*, ambito **Texo**, al massimo 90 giorni, e lo
-copia una volta sola nelle credenziali del customer:
+copia una volta sola nelle credenziali dell'organizzazione:
 
 ```text
-# ~/.config/texo/<customer>.env   (modo 600)
+# ~/.config/texo/<organizzazione>.env   (modo 600)
 TEXO_HUB_TOKEN=<il token>
 ```
 
-Nel `texo.toml` del customer:
-
-```toml
-[texo]
-hub_url = "http://coord.localhost:8069"
-hub_token = "env:TEXO_HUB_TOKEN"
-```
-
-Prova:
+Una cartella di lavoro collegata al hub:
 
 ```bash
-core/bin/texo doctor     # il hub risponde, il token c'è (senza mostrarlo)
-core/bin/texo whoami     # nome, login, ruolo
+texo init http://coord.localhost:8069 <organizzazione>   # scrive texo.toml, poi texo mount
+texo doctor     # il hub risponde, il token c'è (senza mostrarlo), pacchetti e fili
+texo whoami     # nome, login, ruolo
 ```
 
 Un token sbagliato o scaduto risponde 401; un utente senza ruolo 403.
@@ -135,15 +132,15 @@ il formato OKF) o server MCP su stdio (`texo mcp`, registrato da `texo mount` co
 assistente):
 
 ```bash
-core/bin/texo my-work                    # i miei task aperti
-core/bin/texo context --task <id>        # pacchetto di contesto
-core/bin/texo search "parole" --terms sinonimi --scope lessons
-core/bin/texo project <id>               # description, milestone, ultimo update
-core/bin/texo update <id> "Titolo" at_risk "cosa è cambiato, rischi, prossimi passi" --progress 40 --yes
-core/bin/texo note "Titolo" "La regola" --project <id> --yes     # senza appoggio: dell'organizzazione
-core/bin/texo lesson "il problema" "la soluzione" --tags <tema> --yes
-core/bin/texo log-time <id> 1.5 "cosa e perché" --yes
-core/bin/texo rules                      # le regole comuni e quelle dell'organizzazione
+texo my-work                    # i miei task aperti
+texo context --task <id>        # pacchetto di contesto
+texo search "parole" --terms sinonimi --scope lessons
+texo project <id>               # description, milestone, ultimo update
+texo update <id> "Titolo" at_risk "cosa è cambiato, rischi, prossimi passi" --progress 40 --yes
+texo note "Titolo" "La regola" --project <id> --yes     # senza appoggio: dell'organizzazione
+texo lesson "il problema" "la soluzione" --tags <tema> --yes
+texo log-time <id> 1.5 "cosa e perché" --yes
+texo rules                      # le regole comuni e quelle dell'organizzazione
 ```
 
 Le scritture richiedono `--yes` (riga di comando) o `confirm: true` (MCP), dopo il sì della persona nella

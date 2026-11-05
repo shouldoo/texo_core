@@ -1,9 +1,9 @@
-# I fili: fonti, strumenti e connettori
+# I fili e i pacchetti
 
-Un **filo** è ciò che un tessuto monta accanto alla memoria: una fonte da citare, uno strumento da usare, un
-connettore a un sistema che contiene dati dell'organizzazione o dei suoi clienti. Il core sa montare i fili;
-quali fili montare lo dice il deploy, nel `texo.toml` del customer. Nessun filo specifico sta nel core, e
-nessun repository è dedicato a una fonte. Il hub, il connettore della memoria, è sempre montato (il server MCP
+Un **filo** è ciò che una cartella di lavoro monta accanto alla memoria: una fonte da citare, uno strumento da
+usare, un connettore a un sistema che contiene dati dell'organizzazione o dei suoi clienti. Il core sa montare i
+fili; quali fili montare lo dice l'organizzazione, nella configurazione del suo hub. Nessun filo specifico sta
+nel core, e nessun repository è dedicato a una fonte. Il hub, il connettore della memoria, è sempre montato (il server MCP
 `memoria`) e non si dichiara come filo.
 
 ## Tipi
@@ -19,24 +19,33 @@ nessun repository è dedicato a una fonte. Il hub, il connettore della memoria, 
 1. **Core**: i tipi, i driver, la sintassi, il montaggio, la diagnosi e le regole generali per l'agente
    (citare la fonte letta, chiedere prima di scrivere su un connettore, non mandare a un filo dati di una
    classe sopra la sua).
-2. **Industry**: i fili che un settore suggerisce, con una configurazione di partenza, nel suo
-   `texo_industry.toml` (`[[suggested_thread]]` con `id` e `why`). `texo mount` segnala come `info` un filo
-   suggerito che il customer non ha.
-3. **Customer**: i fili montati davvero, con versioni fissate e i nomi delle credenziali, nel `texo.toml`; gli
-   adattatori su misura in `threads/<id>/`.
+2. **Pacchetto**: i fili che un settore suggerisce, con una dichiarazione di partenza, nel `pack.toml` del suo
+   pacchetto (`[[suggested_thread]]` con `id` e `why`). `texo mount` segnala come `info` un filo suggerito che
+   l'organizzazione non ha.
+3. **Organizzazione**: i fili montati davvero, con versioni fissate e i nomi delle credenziali, nella
+   configurazione del suo hub; gli adattatori su misura in `threads/<id>/` della cartella di lavoro o del suo
+   repository privato.
 
-## Sintassi in `texo.toml`
+## Dove si dichiarano
+
+**Nel hub**, per tutta l'organizzazione: un amministratore li scrive in Odoo (*Impostazioni > Utenti > Texo
+Threads*) o con la route `admin/config` (prima l'anteprima, poi `apply`). Ogni filo è un record `texo.thread`:
+`id`, `type`, `driver`, `data_class`, `writes`, `guide` come campi, e le impostazioni del driver (`repo`, `ref`,
+`url`, `paths`, `skills`, `command`, `args`, `env`, `auth`, …) come oggetto JSON. Un filo tolto dalla lista
+si archivia, non si cancella; una credenziale scritta come valore viene rifiutata, nulla si salva.
+
+**Nel `texo.toml`** della cartella di lavoro, per un'aggiunta locale o una variante: un `[[thread]]` con lo
+stesso `id` di un filo del hub lo sostituisce su quella cartella. `texo mount` legge la configurazione del hub
+(route `config`, conservata in `.texo/config.json`; con `--offline` usa quella copia) e vi aggiunge i fili del
+`texo.toml`.
+
+La dichiarazione è la stessa nei due posti; in `texo.toml`:
 
 ```toml
 [texo]
-customer = "acme"                           # lo slug: ~/.config/texo/acme.env tiene le credenziali
-core = "v1.0.0"                             # il tag di texo_core montato in core/
+organisation = "acme"                       # lo slug: ~/.config/texo/acme.env tiene le credenziali
 hub_url = "https://memoria.example.org"
 hub_token = "env:TEXO_HUB_TOKEN"            # mai il valore: il nome della variabile
-
-[[industry]]
-name = "<settore>"
-version = "v1.0.0"                          # il tag di texo_industry_<settore> montato in industry/<settore>/
 
 [[thread]]
 id = "norme"
@@ -81,7 +90,7 @@ guide = "Documenti dei clienti: leggi, non copiare in locale; registra nel hub l
 | `assistants` | MCP | facoltativo: per quali assistenti montarlo (`claude`, `gemini`, `antigravity`) |
 | `repo`, `ref`, `depth` | git | il repository (`host/owner/nome` o un URL) e il tag o commit fissato |
 | `paths` | `git-mirror` | facoltativo: le sole cartelle da scaricare (checkout parziale), per un repository grande di cui serve una parte |
-| `skills` | `git-mirror` | facoltativo: la cartella del mirror che contiene skill (`<nome>/SKILL.md`), collegate da `texo mount` come quelle di core e industry; dentro `paths`, se `paths` c'è |
+| `skills` | `git-mirror` | facoltativo: la cartella del mirror che contiene skill (`<nome>/SKILL.md`), collegate da `texo mount` come quelle del core e dei pacchetti; dentro `paths`, se `paths` c'è |
 | `url` | `http`, `mcp-http` | l'indirizzo |
 | `hub_channel`, `name`, `channel_kind`, `every_days`, `feeds` | `http` | con `hub_channel = true` il filo diventa un canale delle fonti esterne del hub (`texo_sources`), registrato da `texo seed` |
 | `command`, `args`, `env` | `mcp-stdio`, `cli` | il comando, i suoi argomenti, le variabili d'ambiente (una credenziale come `env:NOME`) |
@@ -106,8 +115,8 @@ senza `guide`.
 
 ## Credenziali
 
-`texo.toml` porta solo il nome di una credenziale (`env:NOME`). Il valore si legge dall'ambiente o da
-`~/.config/texo/<customer>.env` (righe `NOME=valore`), che deve avere modo 600: un file leggibile da altri
+Il hub e `texo.toml` portano solo il nome di una credenziale (`env:NOME`). Il valore si legge dall'ambiente o da
+`~/.config/texo/<organisation>.env` (righe `NOME=valore`), che deve avere modo 600: un file leggibile da altri
 viene rifiutato. Nessun file di configurazione degli assistenti contiene un token: ogni filo MCP vi è scritto
 come `texo run-thread <id>`, che risolve le credenziali all'avvio.
 
@@ -120,7 +129,7 @@ ancora.
 | Driver | Per | Montaggio (`texo mount`) | Diagnosi (`texo doctor`) | Come lo usa l'agente |
 |---|---|---|---|---|
 | `git-remote` | fonti in un repository letto da remoto | niente da installare | `git ls-remote` del `ref` | `texo thread <id> ls [percorso]`, `read <percorso>`, `search <parole>`, sempre al `ref` fissato |
-| `git-mirror` | fonti da leggere con `rg` in locale, skill pubblicate da terzi | clone shallow al `ref` in `$TEXO_SHARED_DIR/mirrors/<id>` (default `~/.local/share/texo`), una copia per macchina condivisa dai tessuti, solo le `paths` se dichiarate; riallineato quando il `ref` cambia | la copia esiste, è al `ref` fissato e contiene la cartella `skills` | `rg` nella cartella, in sola lettura; le sue skill come le altre |
+| `git-mirror` | fonti da leggere con `rg` in locale, skill pubblicate da terzi | clone shallow al `ref` in `$TEXO_SHARED_DIR/mirrors/<id>` (default `~/.local/share/texo`), una copia per macchina condivisa dalle cartelle di lavoro, solo le `paths` se dichiarate; riallineato quando il `ref` cambia | la copia esiste, è al `ref` fissato e contiene la cartella `skills` | `rg` nella cartella, in sola lettura; le sue skill come le altre |
 | `http` | documentazione o feed | registrazione; con `hub_channel` un canale del hub (`texo seed`) | l'indirizzo risponde | il suo indirizzo |
 | `mcp-stdio` | strumenti e connettori MCP locali | voce `texo run-thread <id>` nella configurazione di ogni assistente | avvio del server e risposta a `initialize` | gli strumenti del server MCP `<id>` |
 | `mcp-http` | strumenti e connettori MCP remoti | come `mcp-stdio`: `texo run-thread` fa da ponte stdio → Streamable HTTP, con la credenziale come bearer | la credenziale c'è, l'indirizzo risponde | come sopra |
@@ -132,7 +141,8 @@ l'API di ricerca di GitHub e chiede un token in `GITHUB_TOKEN` o `GH_TOKEN`.
 ## Adattatori su misura
 
 Un software senza server MCP né CLI utilizzabile (un programma con un'API proprietaria, un gestionale) si
-collega con un adattatore nel repository customer, in `threads/<id>/`: un piccolo server MCP o una CLI,
+collega con un adattatore dell'organizzazione, in `threads/<id>/` della cartella di lavoro o del suo repository
+privato: un piccolo server MCP o una CLI,
 montato con `mcp-stdio` o `cli` come ogni altro filo.
 
 ```toml
@@ -148,24 +158,48 @@ writes = "confirm"
 guide = "Anagrafiche e documenti del cliente: leggi, non modificare senza conferma."
 ```
 
-Il server parte dalla radice del customer, con la stessa fiducia del resto del repository, privato e rivisto.
-Un adattatore scritto per il customer A resta nel repository di A; se serve anche a B, si riscrive generico e
-si pubblica come server MCP a sé, che B monta come filo.
+Il server parte dalla radice della cartella di lavoro, con la fiducia del codice che l'organizzazione tiene e
+rivede. Un adattatore scritto per l'organizzazione A resta suo; se serve anche a B, si riscrive generico e si
+pubblica come server MCP a sé, che B monta come filo.
+
+## Pacchetti
+
+I pacchetti di skill di un settore stanno in un solo repository, il marketplace (`github.com/shouldoo/
+texo_marketplace`; un altro con `marketplace` in `[texo]` o con `TEXO_MARKETPLACE`). `packs/<nome>/` è un
+pacchetto e il tag `<nome>-<versione>` una sua release. L'organizzazione li sceglie nel hub, con la versione
+(*Impostazioni > Utenti > Texo Skill Packs*, o `admin/config`); un `[[pack]]` del `texo.toml` ne aggiunge uno
+o ne cambia la versione su quella cartella.
+
+```text
+packs/<nome>/
+├── pack.toml        [pack] name, version, core (il core che richiede), work_dirs; [[suggested_thread]]
+├── skills/          le skill del settore, con i loro riferimenti
+├── seed.toml        attività, sezioni, regole e template di progetto del settore (texo seed)
+└── demo/            facoltativo: un'organizzazione inventata per i test (setup/load-demo.sh)
+```
+
+`texo mount` scarica solo la cartella del pacchetto al suo tag, una volta per macchina, in
+`$TEXO_SHARED_DIR/mirrors/pack-<nome>-<versione>`; poi controlla che il tag porti la versione chiesta e che il
+core installato soddisfi `core`. `texo where --pack <nome>` dice dove sta. Un pacchetto porta solo metodo: le
+regole del settore arrivano nel hub con il seed, i valori di una norma (soglie, importi, scadenze) sono fatti
+dell'organizzazione nel hub, con l'articolo letto, la data di verifica e una scadenza.
 
 ## Comandi
 
 | Comando | Che cosa fa |
 |---|---|
-| `texo mount [--yes]` | legge `texo.toml` e i manifest degli industry; verifica la versione del core, quelle degli industry, gli industry richiesti e le dichiarazioni dei fili (con un errore non monta nulla); clona i `git-mirror`; installa i `cli` mancanti solo con `--yes`; scrive la configurazione MCP di Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) e del profilo Antigravity del customer se esiste, togliendo i fili rimossi e lasciando ciò che la persona ha aggiunto; collega le skill di core, dei fili con `skills`, degli industry e del customer in `.agents/skills/` e `.claude/skills/` (a parità di nome vince il customer, poi l'industry, poi il filo); crea le cartelle di lavoro che gli industry dichiarano (`work_dirs` in `texo_industry.toml`); genera `.texo/THREADS.md` e `.texo/threads.json`; aggiunge i file generati al `.gitignore` |
-| `texo doctor` | le stesse verifiche della dichiarazione, il token del hub (senza mostrarlo), il hub che risponde, e la diagnosi di ogni filo |
+| `texo init <hub> <organizzazione>` | scrive `texo.toml` (hub e organizzazione), fa fidare la cartella a Claude Code (e crea il profilo Antigravity se `agy` c'è), poi monta |
+| `texo mount [--yes] [--offline]` | legge la configurazione del hub e vi aggiunge `texo.toml`; installa i pacchetti e ne verifica versione e core richiesto; verifica le dichiarazioni dei fili (con un errore non monta nulla); clona i `git-mirror`; installa i `cli` mancanti solo con `--yes`; scrive la configurazione MCP di Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) e del profilo Antigravity dell'organizzazione se esiste, togliendo i fili rimossi e lasciando ciò che la persona ha aggiunto; collega le skill del core, dei fili con `skills`, dei pacchetti e della cartella (`skills/`) in `.agents/skills/` e `.claude/skills/` (a parità di nome vince la cartella, poi il pacchetto, poi il filo); crea le cartelle di lavoro dei pacchetti (`work_dirs`); scrive `AGENTS.md`, `CLAUDE.md` e `GEMINI.md` se mancano o se li aveva scritti lui; genera `.texo/THREADS.md` e `.texo/threads.json`; aggiunge i file generati al `.gitignore` |
+| `texo doctor` | le stesse verifiche della dichiarazione, il token del hub (senza mostrarlo), il hub che risponde, i pacchetti installati e la diagnosi di ogni filo |
 | `texo threads` | i fili montati, con tipo, `data_class`, `writes`, stato e `guide`; è anche lo strumento `threads` del server MCP `memoria` |
 | `texo thread <id> ls\|read\|search ...` | legge una fonte `git-remote` al `ref` fissato |
-| `texo seed [--apply --yes]` | il seed degli industry nel hub e i canali `hub_channel` (`docs/memoria.md`, «Seed di un industry») |
+| `texo seed [--apply --yes]` | il seed dei pacchetti nel hub e i canali `hub_channel` (`docs/memoria.md`, «Seed di un pacchetto») |
+| `texo where [--pack <nome>]` | la cartella del core, o di un pacchetto installato |
 | `texo run-thread <id>` | lo avviano gli assistenti: un filo MCP con le sue credenziali |
 
 ## Per l'agente
 
-`.texo/THREADS.md` è l'indice dei fili che i file degli assistenti del customer importano, con le regole:
+`.texo/THREADS.md` è l'indice dei fili che i file degli assistenti della cartella importano, con le regole:
 
 - citare la fonte letta (il filo e il percorso o l'indirizzo), mai ciò che se ne ricorda;
 - chiedere alla persona prima di qualsiasi scrittura di un connettore o di uno strumento; un filo con

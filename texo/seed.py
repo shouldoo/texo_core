@@ -1,20 +1,21 @@
-"""texo seed: the seed of the industries of a fabric into its hub.
+"""texo seed: the seed of the skill packs of the organisation into its hub.
 
-Every industry may carry hub/seed.toml: the activities, sections, organisation rules and project templates
-of its sector. The hub writes them by stable key (route admin/seed, administrators only): a dry run first,
-then --apply. The http threads with hub_channel = true become channels of the external sources of the hub
-(texo_sources), once: a channel with the same website is left as it is.
+Every pack may carry seed.toml: the activities, sections, organisation rules and project templates of its
+sector. The hub writes them by stable key (route admin/seed, administrators only): a dry run first, then --apply.
+The http threads with hub_channel = true become channels of the external sources of the hub (texo_sources),
+once: a channel with the same website is left as it is.
 """
 import sys
 import tomllib
 
+from . import packs
 from .config import ConfigError
 
 KINDS = ("activities", "sections", "rules", "project_templates")
 
 
-def payload(fabric, industry):
-    path = fabric.industry_dir(industry) / "hub" / "seed.toml"
+def payload(fabric, pack):
+    path = packs.folder(fabric, pack) / "seed.toml"
     if not path.is_file():
         return None
     try:
@@ -25,7 +26,7 @@ def payload(fabric, industry):
     if unknown:
         raise ConfigError(f"{path}: unknown tables {', '.join(unknown)} (known: {', '.join(KINDS)})")
     result = {kind: data.get(kind) or [] for kind in KINDS}
-    result["industry"] = industry["name"]
+    result["industry"] = pack["name"]
     if data.get("lang"):
         result["lang"] = data["lang"]
     return result
@@ -62,10 +63,10 @@ def channels(fabric, hub, apply, out):
 
 
 def seed(fabric, hub, apply=False, out=sys.stdout):
-    for industry in fabric.industries:
-        data = payload(fabric, industry)
+    for pack in fabric.packs:
+        data = payload(fabric, pack)
         if data is None:
-            out.write(f"{industry['name']}: no hub/seed.toml\n")
+            out.write(f"{pack['name']}: no seed.toml (texo mount installs the packs)\n")
             continue
         render(hub.call("admin/seed", dict(data, apply=apply)), out)
     if any(t.get("hub_channel") for t in fabric.threads):

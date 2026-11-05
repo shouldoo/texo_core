@@ -1,50 +1,56 @@
 # Architettura
 
-Texo — workspace e memoria per agenti AI al lavoro. Un'organizzazione dà ai suoi agenti un workspace
-composto (il **tessuto**) e una memoria che vive nel suo Odoo di coordinamento (il **telaio**). Il modello di
-memoria è in `docs/memoria.md`, i fili in `docs/fili.md`, ciò che è di tutti e ciò che è dell'organizzazione
-in `docs/blueprint.md`.
+Texo — workspace e memoria per agenti AI al lavoro. Un'organizzazione dà ai suoi agenti una cartella di lavoro
+composta (il **tessuto**) e una memoria che vive nel suo Odoo di coordinamento (il **telaio**). Il modello di
+memoria è in `docs/memoria.md`, i fili e i pacchetti in `docs/fili.md`, ciò che è di tutti e ciò che è
+dell'organizzazione in `docs/blueprint.md`.
 
-Il lessico: **ordito** = core e industry, la struttura fissa; **trama** = le note di memoria; **telaio** = il
-hub; **fili** = le fonti, gli strumenti e i connettori montati; **tessuto** = il workspace composto del
-customer.
+Il lessico: **ordito** = il core e i pacchetti di skill, la struttura fissa; **trama** = le note di memoria;
+**telaio** = il hub; **fili** = le fonti, gli strumenti e i connettori montati; **tessuto** = la cartella di
+lavoro composta dell'organizzazione.
 
 ```text
- texo_customer_<cliente>/            il tessuto: la cartella che l'agente apre (git, privato)
- ├── AGENTS.md, CLAUDE.md, GEMINI.md  importano core/, gli industry, .texo/THREADS.md, le righe proprie
- ├── texo.toml                        core, hub, industry, fili
- ├── core/            → submodule texo_core@tag        regole comuni, CLI texo, driver dei fili, skill della memoria
- ├── industry/<nome>/ → submodule texo_industry_<nome>@tag   convenzioni, reference, playbook, skill, seed del settore
- ├── threads/<id>/                    adattatori su misura di questo customer
- ├── conventions/, skills/            facoltativi: ciò che è proprio dell'organizzazione e cambia con il codice
- ├── eval/                            domande e misure di questo customer
- └── .texo/ (gitignored)              stato del montaggio, THREADS.md generato
+ core (una volta per macchina)        ~/.local/share/texo/core, comando texo: regole comuni, CLI, driver
+                                      dei fili, installatore dei pacchetti, skill della memoria
+ marketplace (pubblico)               packs/<settore>/ a un tag <settore>-<versione>: skill, seed, metadati
+                │                                   │
+                │  texo mount                       │ solo la cartella del pacchetto, al suo tag
+                ▼                                   ▼
+ cartella di lavoro (il tessuto)      una cartella qualunque, aperta con texo init <hub> <organizzazione>
+ ├── texo.toml                        il hub e il nome dell'organizzazione (più aggiunte locali facoltative)
+ ├── AGENTS.md, CLAUDE.md, GEMINI.md  scritti da texo mount: le regole del core e l'indice dei fili
+ ├── .texo/                           configurazione letta dal hub, THREADS.md, stato del montaggio
+ ├── cartelle delle skill             per ogni assistente: le skill del core, dei fili, dei pacchetti, proprie
+ └── threads/<id>/, eval/             facoltativi: adattatori e set di valutazione dell'organizzazione
                 │
                 │ texo (CLI o server MCP memoria), token personale
                 ▼
-   Odoo di coordinamento con texo_hub: organizzazione, clienti, progetti, task, ore,
-   regole, fatti, procedure, lezioni senza cliente, documenti
+   Odoo di coordinamento con texo_hub: organizzazione, clienti, progetti, task, ore, regole, fatti, procedure,
+   lezioni senza cliente, documenti; la configurazione dell'organizzazione (pacchetti e fili)
 ```
 
-## I quattro layer
+## Le tre parti
 
-| Layer | Repository | Che cosa |
+| Parte | Repository | Che cosa |
 |---|---|---|
-| core | `texo_core` (tag `vX.Y.Z`, LGPL-3) | regole agnostiche per gli assistenti, CLI `texo` (client della memoria, montaggio, diagnosi), driver dei fili, ingestione, valutazione, controlli, stack locale dell'Odoo di coordinamento, modello di memoria e blueprint |
-| hub | `texo_hub` (branch per major di Odoo, tag, LGPL-3) | i moduli Odoo della memoria: `texo`, `texo_project`, `texo_memory`, `texo_timesheet`, `texo_mcp`, `texo_vector`, `texo_sources`, `texo_sources_vector` |
-| industry | `texo_industry_<settore>` (tag, contenuti CC BY-SA 4.0) | convenzioni, reference, playbook, skill, seed del hub e fili suggeriti di un settore; nessun dato di clienti |
-| customer | `texo_customer_<cliente>` (privato) | il tessuto: `texo.toml`, submodule, file per gli assistenti, adattatori, set di valutazione; i customer fittizi `texo_customer_demo_<settore>` servono da scenari di test |
+| core | `texo_core` (tag `vX.Y.Z`, LGPL-3) | regole agnostiche per gli assistenti, CLI `texo` (client della memoria, installazione dei pacchetti, montaggio, diagnosi), driver dei fili, ingestione, valutazione, controlli, stack locale dell'Odoo di coordinamento, modello di memoria e blueprint |
+| hub | `texo_hub` (branch per major di Odoo, tag, LGPL-3) | i moduli Odoo della memoria: `texo` (identità, token, configurazione dell'organizzazione), `texo_project`, `texo_memory`, `texo_timesheet`, `texo_mcp`, `texo_vector`, `texo_sources`, `texo_sources_vector` |
+| marketplace | `texo_marketplace` (un tag per pacchetto, contenuti CC BY-SA 4.0) | i pacchetti di skill dei settori: skill con i loro riferimenti, seed del hub, fili suggeriti, cartelle di lavoro; nessun dato di clienti |
 
-Il core e il hub sono agnostici: il core sa come un agente si collega alla memoria e come si monta un filo,
-non come si lavora in un settore; il hub conserva la memoria in Odoo senza presupporre lo scenario. Tutto il
-verticale sta negli industry. I submodule sono piatti e solo nel customer: un industry dichiara gli industry
-che richiede e i fili che suggerisce nel suo `texo_industry.toml`, `texo mount` verifica che il customer li
-abbia. Il hub non è un submodule del tessuto: la CLI e il server MCP gli parlano via HTTP.
+Un'organizzazione può tenere in più un repository privato suo, per gli adattatori scritti per lei
+(`threads/<id>/`) e i suoi set di valutazione (`eval/`): può essere la cartella di lavoro stessa.
+
+Il core e il hub sono agnostici: il core sa come un agente si collega alla memoria, come si installa un
+pacchetto e come si monta un filo, non come si lavora in un settore; il hub conserva la memoria in Odoo senza
+presupporre lo scenario. Tutto il verticale sta nei pacchetti. La configurazione dell'organizzazione (quali
+pacchetti, a quale versione, quali fili) sta nel suo hub: `texo mount` la legge e la monta sulla macchina della
+persona. Il hub non si monta: la CLI e il server MCP gli parlano via HTTP.
 
 ## Scelte
 
-- **Memoria procedurale in git, letta per regola.** Un reference letto prima di agire evita gli errori che la
-  memoria del modello non vede; sta nel layer che ne risponde (core, industry, customer).
+- **Memoria procedurale nelle skill, lette per regola.** Una skill o un riferimento letti prima di agire
+  evitano gli errori che la memoria del modello non vede; stanno nel core (la memoria) o nel pacchetto del
+  settore, e portano solo metodo.
 - **Memoria di lavoro con lo stato.** Ogni nota dice se è `draft`, `active` o `superseded`: con lo stato nei
   metadati l'agente non prende una fonte superata per quella valida. Sta nell'Odoo di coordinamento (regole,
   fatti e procedure; il progetto con description, milestone e l'ultimo update come presente; i task con il
@@ -57,31 +63,32 @@ abbia. Il hub non è un submodule del tessuto: la CLI e il server MCP gli parlan
   che sopravvive all'opt-out del cliente; una lezione che nomina un cliente viene rifiutata e non si salva
   nulla.
 - **Fonti vere, non memoria del modello**: le fonti autorevoli di un settore si montano come fili e si citano
-  dopo averle lette.
+  dopo averle lette; i valori di una norma (soglie, importi, scadenze) sono fatti dell'organizzazione nel hub,
+  con l'articolo letto, la data di verifica e una scadenza.
 - **Task solo dall'Odoo di coordinamento**: `project.task`, letti con `texo my-work` e `texo task`. Un
   repository di codice tiene codice, branch e PR; un commit o una PR cita l'id del task.
 
-## Regole, procedure e convenzioni: hub o git
+## Regole, procedure e configurazione: hub o git
 
 | Che cosa | Dove | Perché |
 |---|---|---|
-| Regole di comportamento dell'organizzazione, per l'organizzazione, un cliente o un progetto | hub, `memory.note` di tipo regola | arrivano per regola a inizio sessione con le istruzioni del server `memoria`; stato e conferma del lead, gravità, attività, verifica e scadenza; le scrive anche chi non usa git; valgono per ogni assistente |
-| Procedure seguite dalle persone e fatti dell'organizzazione | hub, procedure e fatti per sezione | come sopra |
-| Convenzioni tecniche dell'organizzazione sopra quelle dell'industry | customer, `conventions/` | cambiano con il codice: diff, PR, lettura offline |
-| Procedure eseguite dall'agente con strumenti e script | `skills/`: del customer se dell'organizzazione, dell'industry se del settore, del core se della memoria | le skill si attivano sul compito e portano i loro script |
-| `AGENTS.md` del customer | customer | solo composizione e rimandi, mai una copia delle regole del hub |
+| Regole di comportamento dell'organizzazione, per l'organizzazione, un cliente o un progetto, comprese quelle del suo settore | hub, `memory.note` di tipo regola (quelle di settore arrivano dal seed di un pacchetto) | arrivano per regola a inizio sessione con le istruzioni del server `memoria`; stato e conferma del lead, gravità, attività, verifica e scadenza; le scrive anche chi non usa git; valgono per ogni assistente |
+| Procedure seguite dalle persone e fatti dell'organizzazione, valori delle norme compresi | hub, procedure e fatti per sezione | come sopra; un fatto ha verifica e scadenza |
+| Pacchetti installati e fili | hub, configurazione dell'organizzazione (`texo.pack`, `texo.thread`) | la scrive l'amministratore, la legge `texo mount` per ogni persona; nessuna credenziale |
+| Procedure eseguite dall'agente con strumenti e script | skill: del pacchetto se del settore, del core se della memoria, della cartella (`skills/`) se dell'organizzazione | si attivano sul compito e portano i loro script |
+| Adattatori e set di valutazione dell'organizzazione | il suo repository privato, facoltativo | cambiano con il codice: diff, PR |
 
-## Repository, artefatti, istanza
+## Disegno, artefatti, istanza
 
 Ogni componente appartiene a uno di tre regimi, che dicono dove vive e come cambia:
 
 | Regime | Che cosa | Come cambia |
 |---|---|---|
-| **Disegno comune** | core e industry: regole comuni, skill, script, controlli, contenuti di settore; il modello di memoria e il metodo dell'adozione | con modifiche riviste, per tutti; un customer li monta a un tag e non ne tiene una copia modificata |
+| **Disegno comune** | il core e i pacchetti del marketplace: regole comuni, skill, script, controlli, contenuti di settore; il modello di memoria e il metodo dell'adozione | con modifiche riviste, per tutti; un'organizzazione li installa a una versione e non ne tiene una copia modificata |
 | **Artefatti rilasciati** | i moduli di `texo_hub` | si installano da un tag, non si forkano; un'esigenza di un'organizzazione diventa un suo modulo che eredita, e torna a monte se è generale |
-| **Istanza** | l'Odoo di coordinamento di un'organizzazione e il suo repository customer | lo scrivono le sue persone, con i loro ruoli; non passa mai a un'altra organizzazione |
+| **Istanza** | l'Odoo di coordinamento di un'organizzazione, la sua cartella di lavoro e il suo repository privato | lo scrivono le sue persone, con i loro ruoli; non passa mai a un'altra organizzazione |
 
-Le buone prassi di terzi entrano negli industry come principi riscritti e verificati su fonti pubbliche, mai
+Le buone prassi di terzi entrano nei pacchetti come principi riscritti e verificati su fonti pubbliche, mai
 come testo copiato.
 
 **Dove sta il profilo dell'organizzazione.** Mai in un repository: chi è (missione, servizi, come lavora, a
@@ -92,17 +99,18 @@ permessi e l'audit di Odoo; ciò che vincola gli agenti è una regola dell'organ
 
 ## Isolamento tra clienti
 
-1. Core, hub, industry e customer demo non contengono dati di clienti reali, per costruzione.
-2. Un deploy per il cliente A prende `texo_core@tag`, `texo_hub@tag`, gli industry di A a un tag e
-   `texo_customer_a` con i suoi fili: mai un altro customer.
-3. Unico canale da un cliente a un industry: la promozione di una lezione, riscritta astratta, verificata su
+1. Core, hub e marketplace non contengono dati di clienti reali, per costruzione; i dati dimostrativi di un
+   pacchetto (`demo/`) sono inventati.
+2. Una cartella di lavoro dell'organizzazione A legge solo il hub di A: i pacchetti e i fili che il hub di A
+   dichiara, le credenziali di A.
+3. Unico canale da un cliente a un pacchetto: la promozione di una lezione, riscritta astratta, verificata su
    una fonte pubblica, con una PR rivista da una persona.
 4. `data_class` di ogni filo: un dato di classe `customer` va solo a fili che la ammettono (`docs/fili.md`).
-5. `scripts/check_isolation.py` in CI su core, hub, industry e customer demo, con l'elenco dei nomi da
-   bloccare da un secret, mai versionato.
+5. `scripts/check_isolation.py` in CI su core, hub e marketplace, con l'elenco dei nomi da bloccare da un
+   secret, mai versionato.
 
 ## Dati dei clienti
 
 I dati personali delle persone di un cliente non escono dai suoi sistemi. Niente dati di progetto nel git del
-core o di un industry: stanno nell'Odoo di coordinamento, con i permessi di Odoo per persona e per progetto.
+core o del marketplace: stanno nell'Odoo di coordinamento, con i permessi di Odoo per persona e per progetto.
 Un documento di un cliente si legge dove sta (un filo `connector`) e se ne registra nel hub la scheda.

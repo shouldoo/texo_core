@@ -1,19 +1,20 @@
-"""texo mount and texo doctor: compose the fabric of a customer and check that it holds.
+"""texo mount and texo doctor: compose the working folder of an organisation and check that it holds.
 
-mount reads texo.toml and the manifests of the industries, checks versions and declarations, installs the
-threads that need it, writes the MCP configuration of every assistant (the hub as the server memoria, the MCP
-threads through texo run-thread, so no credential is ever written in a file) and generates .texo/THREADS.md,
-the index of the threads that the files of the assistants import. doctor checks that every thread answers
-and every credential is there, without showing it.
+mount reads the configuration of the organisation from its hub (packs and threads, merged with texo.toml), installs
+the packs of the marketplace and the threads that need it, checks versions and declarations, writes the MCP
+configuration of every assistant (the hub as the server memoria, the MCP threads through texo run-thread, so no
+credential is ever written in a file), links the skills, and writes the files the assistants read: AGENTS.md (the
+rules of the core), CLAUDE.md and GEMINI.md, .texo/THREADS.md. doctor checks that the hub, every thread and every
+credential are there, without showing a credential.
 """
+import datetime
 import json
 import os
 import re
 import sys
-import tomllib
 from pathlib import Path
 
-from . import __version__, threads
+from . import __version__, hub, packs, threads
 from .config import ConfigError, Fabric
 
 ASSISTANTS = ("claude", "gemini", "antigravity")
@@ -41,47 +42,31 @@ def satisfies(version, constraint):
     return True
 
 
-def industry_manifest(fabric, industry):
-    path = fabric.industry_dir(industry) / "texo_industry.toml"
-    if not path.is_file():
-        return None
-    try:
-        return tomllib.loads(path.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as error:
-        raise ConfigError(f"{path}: {error}") from None
-
-
 def check_fabric(fabric):
-    """The problems of the composition: (level, message), level error, warning or info."""
+    """The problems of the composition: (level, message), level error, warning or info. The packs are checked
+    once installed (their pack.toml)."""
     problems = []
-    core = fabric.texo.get("core")
-    if not core:
-        problems.append(("error", "[texo] core is missing: the tag of texo_core mounted in core/"))
-    elif version_tuple(core) != version_tuple(__version__):
-        problems.append(("error", f"[texo] core is {core}, the mounted core is {__version__}: update the submodule"))
     if not fabric.texo.get("hub_url"):
         problems.append(("error", "[texo] hub_url is missing"))
-    names = {industry.get("name") for industry in fabric.industries}
     declared = {thread.get("id") for thread in fabric.threads}
-    for industry in fabric.industries:
-        name = industry.get("name") or "?"
-        manifest = industry_manifest(fabric, industry)
-        if manifest is None:
-            problems.append(("error", f"industry {name}: no texo_industry.toml in {fabric.industry_dir(industry)} "
-                                      "(git submodule update --init)"))
+    for pack in fabric.packs:
+        name = pack.get("name") or "?"
+        if not re.match(r"^[a-z][a-z0-9_]*$", name) or not version_tuple(pack.get("version")):
+            problems.append(("error", f"pack {name}: a pack has a name (one lowercase word) and a version (v1.2.0)"))
             continue
-        info = manifest.get("industry") or {}
-        if version_tuple(info.get("version")) != version_tuple(industry.get("version")):
-            problems.append(("error", f"industry {name}: texo.toml pins {industry.get('version')}, the submodule "
-                                      f"is {info.get('version')}"))
+        manifest = packs.manifest(fabric, pack)
+        if manifest is None:
+            continue
+        info = manifest.get("pack") or {}
+        if version_tuple(info.get("version")) != version_tuple(pack.get("version")):
+            problems.append(("error", f"pack {name}: the configuration asks {pack.get('version')}, the marketplace "
+                                      f"tag holds {info.get('version')}"))
         if not satisfies(__version__, info.get("core")):
-            problems.append(("error", f"industry {name} needs core {info.get('core')}, the core is {__version__}"))
-        for required in info.get("requires") or []:
-            if required not in names:
-                problems.append(("error", f"industry {name} requires the industry {required}"))
+            problems.append(("error", f"pack {name} needs core {info.get('core')}, the core is {__version__}: "
+                                      "update texo (setup/install.sh)"))
         for suggested in manifest.get("suggested_thread") or []:
             if suggested.get("id") not in declared:
-                problems.append(("info", f"industry {name} suggests the thread {suggested.get('id')}: "
+                problems.append(("info", f"pack {name} suggests the thread {suggested.get('id')}: "
                                          f"{suggested.get('why') or suggested.get('guide') or ''}".rstrip(": ")))
     ids = [thread.get("id") for thread in fabric.threads]
     for duplicate in sorted({i for i in ids if ids.count(i) > 1}):
@@ -112,7 +97,8 @@ def threads_markdown(fabric, states):
     lines = [
         "# Threads of this fabric",
         "",
-        "Generated by `texo mount` from texo.toml: do not edit. The hub (the MCP server `memoria`) is always mounted.",
+        "Generated by `texo mount` from the configuration of the organisation: do not edit. The hub (the MCP server",
+        "`memoria`) is always mounted.",
         "",
         "- Cite the source you read (the thread and the path or the address), never what you remember of it.",
         "- Ask the person before anything a connector or a tool writes; a thread with writes never is read only.",
@@ -183,7 +169,7 @@ def write_assistants(fabric, out):
     out.write("[ok] Claude Code: .mcp.json\n")
     merge_json(fabric.root / ".gemini" / "settings.json", update("mcpServers", "gemini", entry=dict))
     out.write("[ok] Gemini CLI: .gemini/settings.json\n")
-    profile = Path(os.environ.get("TEXO_AGY_PROFILE", f"~/.antigravity-texo-{fabric.customer}")).expanduser()
+    profile = Path(os.environ.get("TEXO_AGY_PROFILE", f"~/.antigravity-texo-{fabric.organisation}")).expanduser()
     if profile.is_dir():
         merge_json(profile / ".gemini" / "config" / "mcp_config.json", update("mcpServers", "antigravity", entry=dict),
                    mode=0o600)
@@ -196,14 +182,14 @@ IGNORED = (".texo/", ".mcp.json", ".gemini/settings.json", ".agents/skills/", ".
 
 
 def skill_sources(fabric):
-    """The skills of the fabric by name: the customer's own win over an industry's, an industry's over those of
-    a thread (a mirror that carries skills), and these over the core's."""
+    """The skills of the working folder by name: its own (skills/) win over a pack's, a pack's over those of a
+    thread (a mirror that carries skills), and these over the core's."""
     core = Path(__file__).resolve().parent.parent
     layers = [("core", core / "skills")]
     layers += [(f"thread {t['id']}", threads.mirror_dir(t) / t["skills"]) for t in fabric.threads
                if t.get("driver") == "git-mirror" and t.get("skills")]
-    layers += [(f"industry {i['name']}", fabric.industry_dir(i) / "skills") for i in fabric.industries]
-    layers.append(("customer", fabric.root / "skills"))
+    layers += [(f"pack {p['name']}", packs.folder(fabric, p) / "skills") for p in fabric.packs]
+    layers.append(("this folder", fabric.root / "skills"))
     found, shadowed = {}, []
     for layer, folder in layers:
         for skill in sorted(folder.glob("*/SKILL.md")) if folder.is_dir() else []:
@@ -233,12 +219,11 @@ def link_skills(fabric, out):
 
 
 def work_dirs(fabric):
-    """The working folders the industries declare (work_dirs in texo_industry.toml): created by mount, never
-    versioned in the customer repository."""
+    """The working folders the packs declare (work_dirs in pack.toml): created by mount, never versioned."""
     folders = []
-    for industry in fabric.industries:
-        manifest = industry_manifest(fabric, industry) or {}
-        for folder in (manifest.get("industry") or {}).get("work_dirs") or []:
+    for pack in fabric.packs:
+        manifest = packs.manifest(fabric, pack) or {}
+        for folder in (manifest.get("pack") or {}).get("work_dirs") or []:
             folder = str(folder).strip("/")
             if folder and ".." not in Path(folder).parts and folder not in folders:
                 folders.append(folder)
@@ -250,6 +235,9 @@ def ignore_generated(fabric, out):
     path = fabric.root / ".gitignore"
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
     wanted = list(IGNORED) + [f"{folder}/" for folder in work_dirs(fabric)]
+    # the files of the assistants mount wrote; those the person wrote are theirs to version
+    wanted += [name for name in ("AGENTS.md", "CLAUDE.md", "GEMINI.md") if (fabric.root / name).is_file()
+               and GENERATED in (fabric.root / name).read_text(encoding="utf-8")]
     missing = [entry for entry in wanted if entry not in lines]
     if missing:
         block = ["", "# generated by texo mount"] if lines else ["# generated by texo mount"]
@@ -272,11 +260,64 @@ def report(problems, out):
     return any(level == "error" for level, _ in problems)
 
 
-def mount(fabric, allow_install=False, out=sys.stdout):
-    if report(check_fabric(fabric), out):
-        out.write("Nothing mounted: fix the errors in texo.toml.\n")
+GENERATED = "<!-- generated by texo mount: the rules live in the core and in the hub, not here -->"
+
+
+def refresh(fabric, out, client=None):
+    """The configuration of the organisation from its hub, kept in .texo/config.json; the copy kept there when
+    the hub does not answer."""
+    try:
+        remote = (client or hub.Hub(*fabric.hub())).call("config")
+    except (ConfigError, hub.HubError) as error:
+        kept = fabric.remote.get("fetched")
+        out.write(f"[warning] hub: {error}; " + (f"the configuration read on {kept} is used\n" if kept else
+                                                 "only texo.toml is used\n"))
+        return
+    if remote.get("organisation") and remote["organisation"] != fabric.organisation:
+        out.write(f"[warning] the hub names the organisation {remote['organisation']}, texo.toml "
+                  f"{fabric.organisation}: the credentials file is named after texo.toml\n")
+    remote["fetched"] = datetime.date.today().isoformat()
+    fabric.save_remote(remote)
+    out.write(f"[ok] hub: {len(remote.get('packs') or [])} packs, {len(remote.get('threads') or [])} threads\n")
+
+
+def agent_files(fabric):
+    """AGENTS.md with the rules of the core (assistants that read only it), CLAUDE.md and GEMINI.md that import
+    it with the index of the threads."""
+    core = Path(__file__).resolve().parent.parent
+    rules = (core / "AGENTS.md").read_text(encoding="utf-8").replace("<core>", str(core))
+    names = ", ".join(f"{p['name']} {p['version']}" for p in fabric.packs) or "none"
+    agents = (f"{GENERATED}\n{rules.rstrip()}\n\n## This folder\n\n- Organisation: `{fabric.organisation}`; hub: "
+              f"{fabric.texo.get('hub_url')}.\n- Skill packs: {names}.\n- Threads: `.texo/THREADS.md`.\n")
+    pointer = f"{GENERATED}\n@AGENTS.md\n@.texo/THREADS.md\n"
+    return {"AGENTS.md": agents, "CLAUDE.md": pointer, "GEMINI.md": pointer}
+
+
+def write_agent_files(fabric, out):
+    for name, content in agent_files(fabric).items():
+        path = fabric.root / name
+        if path.exists() and GENERATED not in path.read_text(encoding="utf-8"):
+            out.write(f"[info] {name} is yours, left as it is: make it lead to the rules of the core "
+                      f"({Path(__file__).resolve().parent.parent / 'AGENTS.md'}) and to .texo/THREADS.md\n")
+            continue
+        path.write_text(content, encoding="utf-8")
+    out.write("[ok] AGENTS.md, CLAUDE.md, GEMINI.md\n")
+
+
+def mount(fabric, allow_install=False, out=sys.stdout, client=None, offline=False):
+    if not offline:
+        refresh(fabric, out, client)
+    failed = False
+    for pack in fabric.packs:
+        if not re.match(r"^[a-z][a-z0-9_]*$", pack.get("name") or "") or not version_tuple(pack.get("version")):
+            continue
+        status, message = packs.install(fabric, pack)
+        out.write(f"[{status}] pack {pack['name']} {pack['version']}: {message}\n")
+        failed |= status == "error"
+    if report(check_fabric(fabric), out) or failed:
+        out.write("Nothing mounted: fix the errors (the configuration in the hub, or texo.toml).\n")
         return 1
-    states, failed = {}, False
+    states = {}
     for thread in fabric.threads:
         driver = thread["driver"]
         if driver == "git-mirror":
@@ -297,8 +338,10 @@ def mount(fabric, allow_install=False, out=sys.stdout):
     skills = link_skills(fabric, out)
     for folder in work_dirs(fabric):
         (fabric.root / folder).mkdir(parents=True, exist_ok=True)
+    write_agent_files(fabric, out)
     ignore_generated(fabric, out)
-    state = {"core": __version__, "threads": [dict(t, **states[t["id"]]) for t in fabric.threads],
+    state = {"core": __version__, "packs": fabric.packs,
+             "threads": [dict(t, **states[t["id"]]) for t in fabric.threads],
              "mcp_servers": [name for name in servers if name != HUB_SERVER], "skills": skills}
     (fabric.state_dir / "threads.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     out.write("[ok] .texo/THREADS.md\n")
@@ -319,6 +362,11 @@ def doctor(fabric, out=sys.stdout):
         status, message = threads.doctor_http({"url": fabric.texo["hub_url"].rstrip("/") + "/web/login"})
         out.write(f"[{status}] hub: {message}\n")
         failed |= status == "error"
+    for pack in fabric.packs:
+        installed = packs.manifest(fabric, pack) is not None
+        out.write(f"[{'ok' if installed else 'error'}] pack {pack.get('name')} {pack.get('version')}: "
+                  f"{'installed' if installed else 'not installed (texo mount)'}\n")
+        failed |= not installed
     for thread in fabric.threads:
         try:
             status, message = doctor_thread(fabric, thread)
@@ -361,7 +409,7 @@ def thread_by_id(fabric, thread_id):
     for thread in fabric.threads:
         if thread.get("id") == thread_id:
             return thread
-    raise ConfigError(f"no thread {thread_id} in texo.toml")
+    raise ConfigError(f"no thread {thread_id} in the configuration of the organisation")
 
 
 def load(root):

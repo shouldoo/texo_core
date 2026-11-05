@@ -13,7 +13,7 @@ domande, risposte brevi.
 ## Dove si scrive l'esito
 
 Le mappe di un'organizzazione contengono fatti sensibili (persone, numeri, fornitori, norme che la
-riguardano). Non si scrivono in nessun repository, nemmeno nel suo customer: vivono nel suo Odoo di
+riguardano). Non si scrivono in nessun repository, nemmeno nel suo repository privato: vivono nel suo Odoo di
 coordinamento, sulla
 **company** (l'organizzazione stessa). Ogni mappa è una **sezione** (`profile`, `operations`, `compliance`,
 `sector`, `offer`) e ciò che dice si scrive come **note** della company in quella sezione, una per voce
@@ -65,8 +65,9 @@ come «non noto», non si inventa.
 | Vincoli di settore | chi dirige | Vincoli che vengono dai clienti o dagli utenti serviti (persone vulnerabili, enti pubblici, settori regolati) | i casi concreti: sì |
 | Sicurezza e integrità dei dati | chi amministra, l'IT se c'è | Chi accede a cosa, come si fanno i backup, se sono mai stati ripristinati, cosa è successo l'ultima volta che qualcosa si è perso | incidenti: sì |
 
-Le norme si citano solo dopo averle lette su una fonte autorevole, montata come filo `source` del customer
-(`docs/fili.md`); una copia non ufficiale vale per orientarsi e va dichiarata come tale.
+Le norme si citano solo dopo averle lette su una fonte autorevole, montata come filo `source` dell'organizzazione
+(`docs/fili.md`); i valori che se ne ricavano (soglie, importi, scadenze) diventano fatti del suo hub, con
+l'articolo letto, la data di verifica e una scadenza; una copia non ufficiale vale per orientarsi e va dichiarata come tale.
 
 ## Come si conduce
 

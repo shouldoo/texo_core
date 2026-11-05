@@ -15,7 +15,7 @@ memoria, sopra i clienti e i loro progetti, come la radice di un bundle OKF sopr
 suo e di nessun cliente (le sue regole, i suoi fatti, le sue procedure, i suoi documenti) si scrive senza
 appoggio e va sulla company; il suo lavoro interno sono i task del suo progetto home. Ciò che sa di sé è
 diviso in **sezioni** (profilo, operatività, compliance, settore, offerta, più quelle che portano il seed
-dell'industry o l'organizzazione stessa): il pacchetto dell'organizzazione (`texo context` senza task né
+di un pacchetto o l'organizzazione stessa): il pacchetto dell'organizzazione (`texo context` senza task né
 progetto) è un indice per sezione.
 
 Un **cliente** è chi riceve il lavoro di un progetto, il partner del progetto: un cliente, un socio, un
@@ -44,8 +44,8 @@ resta la sintesi che la persona scrive, una nota ha uno stato suo e si trova da 
 se ne vanno con il suo opt-out, quelle dell'organizzazione restano.
 
 Le **attività** dicono a quale lavoro si applica una regola. Il modulo del hub porta solo quelle di ogni
-organizzazione (`analysis`, `communication`); il seed di un industry aggiunge quelle del suo settore e
-l'organizzazione le sue (`texo seed`, «Seed di un industry»).
+organizzazione (`analysis`, `communication`); il seed di un pacchetto aggiunge quelle del suo settore e
+l'organizzazione le sue (`texo seed`, «Seed di un pacchetto»).
 
 ### Memoria procedurale
 
@@ -56,8 +56,8 @@ livelli:
 | Livello | Che cosa | Dove |
 |---|---|---|
 | core | come un agente usa la memoria: le regole comuni, le skill della memoria, i playbook del sistema | `texo_core`: `skills/`, `playbooks/`, `docs/` |
-| industry | come si lavora in un settore: convenzioni, reference, playbook e skill del settore | `texo_industry_<settore>` |
-| customer | le convenzioni tecniche e le skill proprie di un'organizzazione, che cambiano con il suo codice | `texo_customer_<cliente>`: `conventions/`, `skills/` |
+| pacchetto | come si lavora in un settore: le skill del settore con i loro riferimenti, solo metodo | `texo_marketplace`: `packs/<settore>/` |
+| organizzazione | le skill proprie di un'organizzazione, che cambiano con il suo codice | `skills/` della cartella di lavoro o del suo repository privato |
 
 La scrive il curatore di ciascun repository con una modifica rivista; l'agente la legge per regola prima di
 agire o la carica come skill quando il compito corrisponde. Le procedure seguite dalle persone di
@@ -76,7 +76,7 @@ esse vincola l'agente è una regola.
 
 Il pacchetto di contesto dà all'agente i tre insieme e avvisa quando il presente non è affidabile
 (`now_missing`: nessun update; `now_stale`: update di più di 30 giorni, o una milestone raggiunta o scaduta
-dopo l'update). Un seed di industry può portare **template di progetto** (`is_template`, con i loro task) da
+dopo l'update). Il seed di un pacchetto può portare **template di progetto** (`is_template`, con i loro task) da
 cui le persone aprono i progetti del settore.
 
 ### Memoria episodica
@@ -98,7 +98,7 @@ eventi non contano più. Due livelli:
 | Risultato | Esempio | Contiene dati del cliente | Dove finisce |
 |---|---|---|---|
 | di progetto | una decisione con il suo perché, un vincolo del cliente | sì | update, poi description del progetto |
-| generalizzato | un problema e la sua soluzione riusabile | no, è anonimo | lezione del hub; contenuto di un industry quando si ripresenta |
+| generalizzato | un problema e la sua soluzione riusabile | no, è anonimo | lezione del hub; metodo di un pacchetto quando si ripresenta |
 
 Una **lezione** (`memory.lesson`) non ha nessun campo che punti a cliente, progetto o task: l'agente la scrive
 come `finding` in bozza (`texo lesson`) e un filtro deterministico rifiuta tutto se il testo nomina un
@@ -107,7 +107,7 @@ member della company e sopravvive all'opt-out del cliente: è competenza dell'or
 cliente. Una lezione porta le **etichette** di ciò di cui parla (i tag nativi dei progetti: un tema, un
 processo, una versione) e le attività a cui serve: il pacchetto di un task dà le lezioni che hanno un tag in
 comune con il task o con il suo progetto, filtrate per l'attività della sessione; senza tag, nessuna
-lezione. Una lezione sale a contenuto di un industry solo riscritta astratta, verificata su una fonte
+lezione. Una lezione sale a metodo di un pacchetto solo riscritta astratta, verificata su una fonte
 pubblica e con una modifica rivista da una persona. I dati del cliente non salgono mai.
 
 ### Ontologia
@@ -117,7 +117,8 @@ pubblica e con una modifica rivista da una persona. I dati del cliente non salgo
 - **della memoria**: nota (regola, fatto, procedura), sezione, attività, lezione, documento, i loro stati e le
   relazioni (`supersedes`, `superseded_by`, «cita», «si applica a»); progetto, milestone, update e task sono
   i modelli di Odoo;
-- **del dominio**: i concetti tecnici o normativi di un settore, curati dal suo industry;
+- **del dominio**: i concetti tecnici o normativi di un settore, curati dal suo pacchetto (il metodo) e dal hub
+  dell'organizzazione (i valori, come fatti verificati e con scadenza);
 - **dell'organizzazione**: le entità del suo lavoro e la loro corrispondenza con i modelli di Odoo, descritte
   dall'organizzazione nei fatti della sezione settore nel suo hub.
 
@@ -125,7 +126,7 @@ pubblica e con una modifica rivista da una persona. I dati del cliente non salgo
 
 **Un documento esterno autorevole che la memoria cita senza copiarlo.** Una raccolta di norme, la
 documentazione ufficiale di un software, i suoi sorgenti, un documento del cliente. Le fonti esterne si
-montano come **fili** di tipo `source` nel `texo.toml` del customer (`docs/fili.md`). Un **documento della
+montano come **fili** di tipo `source` dell'organizzazione, dichiarati nel suo hub (`docs/fili.md`). Un **documento della
 memoria** è invece un allegato del record a cui appartiene (task, progetto, cliente; quelli
 dell'organizzazione sulla company): il file stesso, o un link all'originale che resta dov'è. Il nome è il
 titolo, la descrizione la sintesi; la memoria aggiunge data di lettura, impronta e il testo convertito come
@@ -148,8 +149,8 @@ update, lezioni. Skill `memoria-ingestione`.
 
 **Come l'agente trova ciò che gli serve.** Tre modi, dal più al meno vincolante:
 
-1. **per regola**: le regole della sessione, il pacchetto di contesto del task, gli indici scritti a mano
-   degli industry, l'indice dei fili (`.texo/THREADS.md`). Il pacchetto è un sommario (l'`index.md` di OKF,
+1. **per regola**: le regole della sessione, il pacchetto di contesto del task, le skill dei pacchetti con i
+   loro riferimenti, l'indice dei fili (`.texo/THREADS.md`). Il pacchetto è un sommario (l'`index.md` di OKF,
    «Nomenclatura»): il testo delle regole che vincolano (divieti e obblighi), il titolo delle preferenze e
    delle lezioni dei suoi tag; il resto si legge quando serve;
 2. **lessicale**: ricerca esatta di nomi e termini (`rg` sui repository e sui fili `git-mirror`); nel hub le
@@ -192,10 +193,9 @@ cosa non fare. Si distingue da:
 
 | Tipo | Risponde a | Dove |
 |---|---|---|
-| reference | che cosa è vero in un dominio | industry, `reference/` |
-| convenzione | come si scrive o si fa qui, sopra il settore | industry `conventions/`; customer `conventions/` |
-| playbook | come si fa un'operazione | `playbooks/` del core o dell'industry |
-| skill | un playbook che l'agente riconosce e invoca da solo, con i suoi trigger e i suoi script | `skills/` del core, dell'industry o del customer |
+| reference | come si legge e si applica un dominio: metodo, non valori | i riferimenti di una skill del pacchetto |
+| playbook | come si fa un'operazione | `playbooks/` del core, o una skill del pacchetto |
+| skill | un playbook che l'agente riconosce e invoca da solo, con i suoi trigger, i suoi riferimenti e i suoi script | `skills/` del core, del pacchetto o della cartella di lavoro |
 
 ### Skill, procedure, regole
 
@@ -204,22 +204,22 @@ come lo fa quell'organizzazione, che cosa gli è permesso o vietato mentre lo fa
 
 | | Risponde a | Vale per | Dove sta | Chi la cambia | Vincola l'agente? |
 |---|---|---|---|---|---|
-| **skill** (e reference, playbook) | come si fa un'operazione: passi, strumenti, controlli | qualunque organizzazione del settore | in git (core, industry, customer) | il curatore, con una modifica rivista | come metodo; non decide nulla al posto dell'organizzazione |
+| **skill** (e reference, playbook) | come si fa un'operazione: passi, strumenti, controlli | qualunque organizzazione del settore | in git (core, pacchetto, cartella di lavoro) | il curatore, con una modifica rivista | come metodo; non decide nulla al posto dell'organizzazione |
 | **procedura** | come si fa qui: canali, cadenza, chi fa cosa | l'organizzazione, un cliente, un progetto | nota nel hub | la persona, dopo il suo sì | no: descrive |
 | **regola** | che cosa un agente deve, non deve mai o preferibilmente fa qui | l'organizzazione, un cliente, un progetto, per le attività che dice | nota nel hub, con gravità e attività | la propone chiunque, la attiva un lead | sì, ed è la sola cosa che lo fa |
 
 Per decidere dove va una frase, tre domande:
 
-1. **Sarebbe vera anche in un'altra organizzazione?** Skill, reference o playbook (core o industry).
+1. **Sarebbe vera anche in un'altra organizzazione?** Skill, reference o playbook (core o pacchetto), purché
+   sia metodo: un valore che cambia con la norma (soglia, importo, scadenza) è un fatto dell'organizzazione.
 2. **È vera solo qui e descrive?** Procedura, o fatto se dice che cosa è qualcosa invece di come si fa.
 3. **Contiene un «si deve», un «mai» o un permesso dato all'agente?** Regola, con gravità e attività.
 
 Ciò che il hub o una skill impongono già a ogni organizzazione (l'approvazione di un lead, il sì della persona)
 non si ripete in una procedura né in una regola: sarebbe un doppione che può divergere.
 
-Precedenza: le regole comuni del core e del hub, poi le regole dell'organizzazione nel hub, poi le convenzioni
-del customer, poi quelle dell'industry. Un contrasto si dichiara nell'`overlay.md` del customer; lo stesso
-fatto non sta mai in due posti.
+Precedenza: le regole comuni del core e del hub, poi le regole dell'organizzazione nel hub (quelle del settore
+arrivano lì dal seed di un pacchetto). Lo stesso fatto non sta mai in due posti.
 
 Il hub consegna ogni strato con il canale della sua autorità. Le regole dell'organizzazione sono **spinte**:
 stanno nelle istruzioni del server MCP `memoria`, precedute dalle regole comuni che dicono come leggerle;
@@ -237,9 +237,9 @@ Due condizioni tengono il confine:
   modello di interpretare, «quelli per cui proponi un tema seguito e nessun dubbio dell'elenco fisso» si
   controlla voce per voce. Un dubbio che l'agente può rimandare va nominato nella regola, se deve far chiedere.
 
-### Seed di un industry
+### Seed di un pacchetto
 
-**Ciò che un settore porta nel hub.** Un industry può avere `hub/seed.toml`: attività, sezioni, regole
+**Ciò che un settore porta nel hub.** Un pacchetto può avere `seed.toml`: attività, sezioni, regole
 dell'organizzazione e template di progetto del suo settore, ciascuno con una chiave stabile. `texo seed` lo
 manda alla route `admin/seed` del hub (solo amministratori): prima una prova a secco che elenca ogni voce con
 il suo stato, poi `texo seed --apply --yes` dopo il sì della persona.
@@ -312,17 +312,17 @@ remoto del hub, come la persona, con il suo token.
 |---|---|
 | Organizzazione | la **company** di Odoo: le sue note per sezione e i suoi documenti; ciò che si scrive senza appoggio va lì; il suo lavoro interno nel suo progetto home; non è mai un cliente |
 | Regole, fatti, procedure | note del hub (`memory.note`, tre tipi) sulla company, su un cliente, su un progetto o (non le regole) su un task |
-| Procedurale | git: core, industry, customer |
+| Procedurale | git: core, pacchetti del marketplace, skill della cartella di lavoro |
 | Progetto | description, milestone, ultimo update del `project.project` |
 | Episodica | description e chatter del `project.task`, worklog delle ore |
 | Lezioni | `memory.lesson`, senza cliente, con filtro di fuga e ricerca full-text |
-| Fonti | i fili `source` del customer; gli allegati dei record segnati come documenti della memoria, con il testo convertito accanto; note che li citano |
-| Ontologia | tipi della memoria nel modello del hub, nominati come OKF («Nomenclatura»); il dominio negli industry |
+| Fonti | i fili `source` dell'organizzazione, dichiarati nel hub; gli allegati dei record segnati come documenti della memoria, con il testo convertito accanto; note che li citano |
+| Ontologia | tipi della memoria nel modello del hub, nominati come OKF («Nomenclatura»); il dominio nei pacchetti (metodo) e nei fatti del hub (valori) |
 | Sogno | cron settimanale, `texo review`, skill `memoria-consolidamento` |
 
 ## Punti aperti
 
 - **Hosting** dell'Odoo di coordinamento oltre la prova in locale: VPS, TLS, backup con prova di ripristino.
-- **Memoria esterna** (una cartella cloud, una risorsa del progetto): si collega come filo `connector` del
-  customer.
-- **Taratura della ricerca semantica** su set di valutazione più grandi, per customer.
+- **Memoria esterna** (una cartella cloud, una risorsa del progetto): si collega come filo `connector`
+  dell'organizzazione.
+- **Taratura della ricerca semantica** su set di valutazione più grandi, per organizzazione.

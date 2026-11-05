@@ -37,8 +37,8 @@ rule is marked `source_changed` in the context pack and in the review queue unti
 lead confirms or supersedes it.
 
 ```bash
-CTX="core/bin/texo"                     # from the root of the customer repository
-INGEST="python3 core/scripts/ingest.py"
+CTX="texo"                     # from the working folder
+INGEST="python3 $(texo where)/scripts/ingest.py"
 $CTX documents --project <id>                 # the documents already there (fingerprints included)
 $INGEST <file> --project <id> --url "<link>"  # one file whose original lives elsewhere: convert, outline only
 $INGEST <file> --task <id>                    # one file the person gives: it goes on the record itself
@@ -51,7 +51,7 @@ $CTX document <id> --text --max-chars 6000    # read a document in slices
 | Where the original is | How it reaches `ingest.py` | What the record gets |
 |---|---|---|
 | attached to a task or project in Odoo | `--attachment <id>` (downloaded through the hub into a temporary folder, removed at the end) | nothing new: that attachment becomes the document |
-| a shared drive, a cloud folder, a web page | the files downloaded into a temporary folder (a connector thread of the fabric, `.texo/THREADS.md`, lists and downloads them), then the file or the folder, with `--url` | a link to the original (for a batch the link of the folder plus the file name) |
+| a shared drive, a cloud folder, a web page | the files downloaded into a temporary folder (a connector thread of the working folder, `.texo/THREADS.md`, lists and downloads them), then the file or the folder, with `--url` | a link to the original (for a batch the link of the folder plus the file name) |
 | a local file of the person, an e-mail saved as `.eml` | the file, without `--url` | the file itself, as an attachment |
 
 ## Workflow & Steps
@@ -72,7 +72,7 @@ $CTX document <id> --text --max-chars 6000    # read a document in slices
   local copy beyond the conversion, nothing of the content in the chat.
 - The file reaches this machine the way the person chooses: an attachment comes
   through `--attachment`; a cloud folder is listed and downloaded with a connector
-  thread of the fabric into a temporary folder; an e-mail is saved as `.eml`. Never ask the
+  thread of the working folder into a temporary folder; an e-mail is saved as `.eml`. Never ask the
   person to paste a document in the chat.
 
 ### 2. Convert and read
@@ -131,8 +131,8 @@ The sources are never the memory: the notes that cite them are.
    and in its section (`operations`, `compliance`, ...): the **procedures** it describes
    (how an operation is done, step by step: `--kind procedure`), the **facts** it states
    (`--kind fact`), the **rules** it states for the agents (short, one obligation or
-   prohibition each). A procedure of the agent itself becomes a skill of the customer
-   or of the industry instead (a separate change, with no customer in it). After the yes,
+   prohibition each). A procedure of the agent itself becomes a skill of the working folder
+   or of a pack instead (a separate change, with no customer in it). After the yes,
    `$CTX note ... --document <id> --yes` for each.
 3. Say that a draft rule binds only once a lead activates it, and that a changed source
    marks every note that cites it `source_changed`, to re-check.
@@ -150,7 +150,7 @@ its summary and converted text) and what it gives, write after the yes.
 - A sensitive document keeps no text (`--no-text`) and its summary names the kind of
   document, not its content.
 - The converted text, the downloads and the temporary files stay out of every git
-  repository (customer, industry, core, code); a download of an
+  repository (the organisation's, the marketplace, the core, code); a download of an
   attachment is removed by the script at the end.
 - A link never holds content: it points to the original, nothing more.
 - A cloud folder used as a source is never one with real data of a customer in a test.

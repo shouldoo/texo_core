@@ -35,7 +35,7 @@ Requires the module `texo_sources` on the hub: the tools `sources_*` of the MCP 
 `texo sources-*`) exist only where it is installed. Without it, say so and stop.
 
 ```bash
-CTX="core/bin/texo"             # from the root of the customer repository
+CTX="texo"             # from the working folder
 $CTX whoami                     # member: triage and cards; lead: also channels and approval
 $CTX sources-due                # the channels overdue (the context pack lists them too)
 ```
@@ -61,7 +61,7 @@ $CTX sources-due                # the channels overdue (the context pack lists t
    the overdue channels, the candidates to sort and the cards to approve.
 2. Read the **procedure of the press review** of the organisation if it has one (a note of kind procedure: when it
    is done, who sorts, who approves) and its **rules** on sources: they bind (see the playbook
-   `core/playbooks/profili-memoria.md`, «Il profilo P4», for the rules usually proposed).
+   `<core>/playbooks/profili-memoria.md` (`texo where` gives `<core>`), «Il profilo P4», for the rules usually proposed).
 
 ### 1. «Leggi le fonti»
 1. `sources_collect` (overdue channels by default; the person may name channels).

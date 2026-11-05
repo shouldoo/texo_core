@@ -1,7 +1,7 @@
 # Playbook: compattazione della memoria procedurale
 
-> Contrasta la crescita per solo aggiunta dei reference e dei playbook di un repository Texo (core,
-> industry, customer). Si innesca dalla dimensione dei file, non dal calendario. La storia resta in git; le
+> Contrasta la crescita per solo aggiunta dei reference, dei playbook e delle skill di un repository Texo
+> (core, marketplace, il repository di un'organizzazione). Si innesca dalla dimensione dei file, non dal calendario. La storia resta in git; le
 > modifiche passano da una PR come ogni altra modifica.
 
 ## Quando
@@ -28,6 +28,6 @@ done
 ## Cosa non fare
 
 - Non cancellare contenuto utile «per fare spazio»: la compattazione riordina, non impoverisce.
-- Non introdurre fatti su clienti, progetti o enti specifici: core e industry contengono solo contenuti
+- Non introdurre fatti su clienti, progetti o enti specifici: core e marketplace contengono solo contenuti
   anonimi e riusabili; il resto vive nell'Odoo di coordinamento (note e decisioni di ogni progetto, lezioni
   senza cliente).
