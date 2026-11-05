@@ -24,6 +24,8 @@ import tempfile
 import urllib.error
 import urllib.request
 
+from . import __version__
+
 TIMEOUT = 60
 WRITE_TOOLS = ("task_note", "note", "note_append", "note_update", "fact", "fact_append", "fact_update", "lesson", "update", "state", "log_time",
                "confirm", "document_write", "document_remove",
@@ -800,7 +802,7 @@ def handle_message(hub, message):
     if method == "initialize":
         hub.generated_by = hub.generated_by or client_actor(params.get("clientInfo"))
         result = {"protocolVersion": params.get("protocolVersion") or "2025-06-18",
-                  "capabilities": {"tools": {}}, "serverInfo": {"name": "memoria", "version": "2.0"},
+                  "capabilities": {"tools": {}}, "serverInfo": {"name": "memoria", "version": __version__},
                   "instructions": instructions(hub)}
     elif method == "notifications/initialized":
         return None

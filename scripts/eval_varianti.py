@@ -3,7 +3,7 @@
 or more question sets, from inside odoo shell (no token, no HTTP: the ORM as the person).
 
     python3 scripts/eval_varianti.py <database> <questions.json> [<questions.json> ...]
-        [--user <login>] [--k 5] [--modes lexical,hybrid] [--out result.json]
+        --user <login> [--k 5] [--modes lexical,hybrid] [--out result.json]
         [--expand glossary.json] [--scope documents|sources] [--cards cards.json]
         [--rerank <url> [--rerank-api tei|llamacpp] [--rerank-task description|chatter] [--pool 10] [--chars 800]]
 

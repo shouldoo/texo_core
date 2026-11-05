@@ -67,7 +67,14 @@ checklog-odoo --no-echo <dir-temporanea>/install.log     # nessun WARNING
 
 Con `texo_vector` si dà il servizio una volta per database (*Impostazioni > Tecniche > Parametri di
 sistema*): `texo_vector.endpoint` = `http://tei:80`; il cron calcola i vettori entro quindici minuti, fino ad
-allora la ricerca è lessicale. `texo_project` crea a ogni company il suo **progetto home**, per il lavoro
+allora la ricerca è lessicale.
+
+Con una GPU AMD o Intel, che TEI non supporta, gli embedding li dà llama.cpp server con Vulkan su un host della rete
+locale: `llama-server -m bge-m3-FP16.gguf --embedding --pooling cls -ngl 99 -c 8192 -b 8192 -ub 8192`, poi
+`texo_vector.api` = `llamacpp` e `texo_vector.endpoint` = il suo URL (`texo_vector/README.md` di `texo_hub`, da
+20.0.1.1.0 del modulo). La porta si apre solo verso l'host di Odoo. Il demo di un pacchetto lo usa con
+`TEXO_VECTOR_ENDPOINT=<url> TEXO_VECTOR_API=llamacpp bash "$(texo where)/setup/load-demo.sh" ...`; il servizio `tei`
+dello stack allora non serve: `$C stop tei`. `texo_project` crea a ogni company il suo **progetto home**, per il lavoro
 interno dell'organizzazione.
 
 `--db-filter` sulla riga di comando serve quando si lanciano i test: i test HTTP chiamano il server come

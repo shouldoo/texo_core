@@ -91,14 +91,16 @@ def repository(path, files, tag):
 
 
 class FakeHub:
-    def __init__(self, config=None, fail=False):
-        self.config, self.fail, self.calls = config or REMOTE, fail, []
+    def __init__(self, config=None, fail=False, status=0):
+        self.config, self.fail, self.status, self.calls = config or REMOTE, fail, status, []
 
     def call(self, route, payload=None):
         from texo.hub import HubError
         self.calls.append((route, payload))
         if self.fail:
-            raise HubError(0, "Odoo not reachable")
+            raise HubError(self.status, "the token is invalid or expired" if self.status == 401 else "Odoo not reachable")
+        if route == "whoami":
+            return {"uid": 7, "login": "lead@acme.example", "name": "Lead", "role": "lead"}
         if route == "config":
             return json.loads(json.dumps(self.config))
         if route == "admin/seed":
@@ -280,15 +282,28 @@ class TestMount(FabricCase):
     def test_doctor_reports_what_is_missing(self):
         out = io.StringIO()
         with unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")):
-            self.assertEqual(mount.doctor(self.fabric(), out=out), 1)
+            self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub()), 1)
         self.assertIn("[error] laws: not mounted", out.getvalue())
         self.mount()
         os.environ["ACME_DRIVE_TOKEN"] = "x"
         out = io.StringIO()
         with unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")):
-            self.assertEqual(mount.doctor(self.fabric(), out=out), 0, out.getvalue())
+            self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub()), 0, out.getvalue())
+        self.assertIn("[ok] hub: lead@acme.example, role lead", out.getvalue())
         self.assertIn("[ok] pack bakery v1.2.0: installed", out.getvalue())
         self.assertNotIn("secret-hub", out.getvalue())
+
+    def test_doctor_asks_the_hub_with_the_token(self):
+        self.mount()
+        os.environ["ACME_DRIVE_TOKEN"] = "x"
+        with unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")):
+            out = io.StringIO()
+            self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub(fail=True, status=401)), 1)
+            self.assertIn("[error] hub 401: the token is invalid or expired", out.getvalue())
+            out = io.StringIO()
+            other = dict(json.loads(json.dumps(REMOTE)), organisation="another")
+            self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub(other)), 0, out.getvalue())
+            self.assertIn("[warning] the hub names the organisation another, texo.toml acme", out.getvalue())
 
     def test_the_cli_lists_the_threads_and_says_where_a_pack_is(self):
         self.mount()
@@ -375,7 +390,7 @@ class TestBridge(unittest.TestCase):
         status, message = threads.mcp_stdio_handshake(
             [str(CORE / "bin" / "texo"), "mcp"], env=dict(os.environ, TEXO_HUB_URL="http://127.0.0.1:9",
                                                           TEXO_HUB_TOKEN="x"), cwd=tempfile.mkdtemp())
-        self.assertEqual((status, message), ("ok", "MCP server memoria 2.0"))
+        self.assertEqual((status, message), ("ok", f"MCP server memoria {__version__}"))
 
 
 if __name__ == "__main__":

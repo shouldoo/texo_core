@@ -350,18 +350,16 @@ def mount(fabric, allow_install=False, out=sys.stdout, client=None, offline=Fals
     return 1 if failed else 0
 
 
-def doctor(fabric, out=sys.stdout):
+def doctor(fabric, out=sys.stdout, client=None):
     failed = report(check_fabric(fabric), out)
     try:
-        fabric.secret(fabric.texo.get("hub_token") or "env:TEXO_HUB_TOKEN")
+        url, token = fabric.hub()
         out.write("[ok] hub token present\n")
     except ConfigError as error:
         out.write(f"[error] hub: {error}\n")
         failed = True
-    if fabric.texo.get("hub_url"):
-        status, message = threads.doctor_http({"url": fabric.texo["hub_url"].rstrip("/") + "/web/login"})
-        out.write(f"[{status}] hub: {message}\n")
-        failed |= status == "error"
+    else:
+        failed |= doctor_hub(fabric, client or hub.Hub(url, token), out)
     for pack in fabric.packs:
         installed = packs.manifest(fabric, pack) is not None
         out.write(f"[{'ok' if installed else 'error'}] pack {pack.get('name')} {pack.get('version')}: "
@@ -375,6 +373,22 @@ def doctor(fabric, out=sys.stdout):
         out.write(f"[{status}] {thread.get('id')}: {message}\n")
         failed |= status == "error"
     return 1 if failed else 0
+
+
+def doctor_hub(fabric, client, out):
+    """The hub asked as the person: the token is accepted, the person has a role, the hub names the organisation
+    of texo.toml. True when something fails."""
+    try:
+        person = client.call("whoami")
+        remote = client.call("config")
+    except hub.HubError as error:
+        out.write(f"[error] hub{' ' + str(error.status) if error.status else ''}: {error}\n")
+        return True
+    out.write(f"[ok] hub: {person.get('login')}, role {person.get('role')}\n")
+    if remote.get("organisation") and remote["organisation"] != fabric.organisation:
+        out.write(f"[warning] the hub names the organisation {remote['organisation']}, texo.toml "
+                  f"{fabric.organisation}: the credentials file is named after texo.toml\n")
+    return False
 
 
 def doctor_thread(fabric, thread):
