@@ -330,6 +330,7 @@ class TestInit(FabricCase):
         self.assertIn("only texo.toml is used", out.getvalue())
         trusted = json.loads((home / ".claude.json").read_text())["projects"][str(folder)]
         self.assertTrue(trusted["hasTrustDialogAccepted"])
+        self.assertEqual(trusted["enabledMcpjsonServers"], ["memoria"], "only the server of the core")
         self.assertEqual(oct((home / ".claude.json").stat().st_mode & 0o777), "0o600")
         self.assertTrue((folder / "AGENTS.md").is_file() and (folder / ".mcp.json").is_file())
         self.assertEqual(cli.main(["--root", str(folder), "init", "http://127.0.0.1:9", "acme"], out=io.StringIO(),

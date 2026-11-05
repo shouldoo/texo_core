@@ -1,4 +1,5 @@
-"""What texo init prepares for the assistants once per working folder: Claude Code trusts the folder, and
+"""What texo init prepares for the assistants once per working folder: Claude Code trusts the folder and its MCP server
+memoria (the one texo mount writes; the MCP servers of the threads wait for the person's approval), and
 Antigravity, when it is installed, gets a profile of its own for the organisation (its MCP servers are filled by
 texo mount). Every file is merged, never overwritten, and kept readable by the person only.
 """
@@ -6,6 +7,8 @@ import json
 import os
 import shutil
 from pathlib import Path
+
+from .mount import HUB_SERVER
 
 
 def merge_private_json(path, update):
@@ -24,9 +27,16 @@ def merge_private_json(path, update):
 
 def trust(root, organisation, out):
     root = str(root)
-    merge_private_json(Path("~/.claude.json").expanduser(), lambda data: data.setdefault("projects", {}).setdefault(
-        root, {}).__setitem__("hasTrustDialogAccepted", True))
-    out.write("[ok] Claude Code: folder trusted\n")
+
+    def trust_folder(data):
+        project = data.setdefault("projects", {}).setdefault(root, {})
+        project["hasTrustDialogAccepted"] = True
+        enabled = project.setdefault("enabledMcpjsonServers", [])
+        if HUB_SERVER not in enabled:
+            enabled.append(HUB_SERVER)
+
+    merge_private_json(Path("~/.claude.json").expanduser(), trust_folder)
+    out.write(f"[ok] Claude Code: folder and MCP server {HUB_SERVER} trusted\n")
     if not (shutil.which("agy") or shutil.which("antigravity")):
         return
     profile = Path(os.environ.get("TEXO_AGY_PROFILE", f"~/.antigravity-texo-{organisation}")).expanduser()
