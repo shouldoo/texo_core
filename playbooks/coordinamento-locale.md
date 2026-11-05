@@ -20,7 +20,7 @@ ${TEXO_STACK:-~/.local/share/texo/coordinamento}/    fuori da git
 └── backups/                             montato in /mnt/backups, per `odoo db dump`
 ```
 
-Lo stack nasce da `bash "$(texo where)/setup/coordinamento-up.sh"`: clona `texo_hub` al tag `${TEXO_HUB_REF:-20.0.1.1.0}`, genera `odoo.conf` e
+Lo stack nasce da `bash "$(texo where)/setup/coordinamento-up.sh"`: clona `texo_hub` al tag `${TEXO_HUB_REF:-20.0.1.2.0}`, genera `odoo.conf` e
 `pg_password` solo se mancano (senza stamparli), costruisce l'immagine `texo-coordinamento:20.0` (`odoo:20.0`
 più il pacchetto Python `markdown2`, senza il quale il modulo `mail` scrive un WARNING a ogni avvio) e avvia.
 Non tocca mai un database.
@@ -72,7 +72,7 @@ allora la ricerca è lessicale.
 Con una GPU AMD o Intel, che TEI non supporta, gli embedding li dà llama.cpp server con Vulkan su un host della rete
 locale: `llama-server -m bge-m3-FP16.gguf --embedding --pooling cls -ngl 99 -c 8192 -b 8192 -ub 8192`, poi
 `texo_vector.api` = `llamacpp` e `texo_vector.endpoint` = il suo URL (`texo_vector/README.md` di `texo_hub`, da
-20.0.1.1.0 del modulo). La porta si apre solo verso l'host di Odoo. Il demo di un pacchetto lo usa con
+20.0.1.1.0 del modulo, nel rilascio 20.0.1.2.0 del hub). La porta si apre solo verso l'host di Odoo. Il demo di un pacchetto lo usa con
 `TEXO_VECTOR_ENDPOINT=<url> TEXO_VECTOR_API=llamacpp bash "$(texo where)/setup/load-demo.sh" ...`; il servizio `tei`
 dello stack allora non serve: `$C stop tei`. `texo_project` crea a ogni company il suo **progetto home**, per il lavoro
 interno dell'organizzazione.
