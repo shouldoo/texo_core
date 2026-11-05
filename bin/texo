@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The launcher of the texo CLI: python3 (3.11 or later) and the standard library only.
+CORE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+exec env PYTHONPATH="${CORE}${PYTHONPATH:+:${PYTHONPATH}}" python3 -m texo "$@"

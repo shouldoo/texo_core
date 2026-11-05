@@ -1,0 +1,273 @@
+"""The threads of a fabric: the sources, tools and connectors a deploy mounts (docs/fili.md).
+
+A thread is declared in texo.toml and mounted by a driver. A driver is a way of connecting, not a piece
+of software: any MCP server, CLI, repository or URL is mounted with the drivers below, without touching
+the core. The hub, the connector of the memory, is always mounted (the MCP server memoria) and is not
+declared as a thread.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+TYPES = ("source", "tool", "connector")
+DRIVERS = ("git-remote", "git-mirror", "http", "mcp-stdio", "mcp-http", "cli")
+DATA_CLASSES = ("public", "org", "customer")
+WRITES = ("never", "confirm")
+ID = re.compile(r"^[a-z][a-z0-9_-]*$")
+# a package pinned to an exact version: name@1.2.3, @scope/name@1.2.3, name==1.2.3
+PINNED = re.compile(r"(@|==)v?\d+(\.\d+)*([.-][0-9A-Za-z.-]+)?$")
+REQUIRED = {"git-remote": ("repo", "ref"), "git-mirror": ("repo", "ref"), "http": ("url",),
+            "mcp-stdio": ("command",), "mcp-http": ("url",), "cli": ("command", "version")}
+TIMEOUT = 20
+
+
+def shared_dir():
+    """Where the mirrors of a machine live, shared by every fabric on it."""
+    return Path(os.environ.get("TEXO_SHARED_DIR", "~/.local/share/texo")).expanduser()
+
+
+def check(thread):
+    """The problems of a thread declaration: (level, message) with level error or warning."""
+    problems = []
+    tid = thread.get("id") or "?"
+
+    def error(message):
+        problems.append(("error", f"{tid}: {message}"))
+
+    def warning(message):
+        problems.append(("warning", f"{tid}: {message}"))
+
+    if not ID.match(thread.get("id") or ""):
+        error("id is one lowercase word (letters, digits, - or _)")
+    kind, driver = thread.get("type"), thread.get("driver")
+    if kind not in TYPES:
+        error(f"type is one of {', '.join(TYPES)}")
+    if driver not in DRIVERS:
+        error(f"driver is one of {', '.join(DRIVERS)}")
+        return problems
+    for key in REQUIRED[driver]:
+        if not thread.get(key):
+            error(f"the driver {driver} needs {key}")
+    data_class = thread.get("data_class")
+    if data_class not in DATA_CLASSES:
+        error(f"data_class is one of {', '.join(DATA_CLASSES)}: what the thread may receive")
+    writes = thread.get("writes", "never")
+    if writes not in WRITES:
+        error(f"writes is one of {', '.join(WRITES)}")
+    if kind == "source" and writes != "never":
+        error("a source is read only: writes = \"never\"")
+    if kind == "connector" and data_class == "public":
+        error("a connector holds data of the organisation or its customers: data_class org or customer")
+    if kind == "connector" and writes == "never" and driver in ("mcp-stdio", "mcp-http"):
+        warning("a connector the agent can only read: check that its tools cannot write")
+    if kind == "tool" and data_class == "customer":
+        warning("a tool that receives the data of customers: check where they go")
+    if not (thread.get("guide") or "").strip():
+        warning("no guide: the agent will not know when to use it and its limits")
+    if driver in ("git-remote", "git-mirror") and thread.get("ref") in ("main", "master", "HEAD"):
+        warning("ref is a moving branch: pin a tag or a commit")
+    if driver == "mcp-stdio" and thread.get("command") in ("npx", "uvx", "pipx") and not any(
+            PINNED.search(str(arg)) for arg in thread.get("args") or []):
+        error(f"{thread['command']} installs a package: pin its version (name@1.2.3)")
+    for key in ("auth", "token"):
+        value = thread.get(key)
+        if value and not str(value).startswith("env:"):
+            error(f"{key} is written as env:NAME, never as its value")
+    for name, value in (thread.get("env") or {}).items():
+        if not str(value).startswith("env:") and re.search(r"(?i)token|key|secret|password", name):
+            error(f"env {name} looks like a credential: write it as env:NAME")
+    return problems
+
+
+# -- git ----------------------------------------------------------------------------------------
+
+def git_url(repo):
+    """A repository written as host/owner/name or as a full URL."""
+    if "://" in repo or repo.startswith(("git@", "/")):
+        return repo
+    return f"https://{repo}.git"
+
+
+def run(command, cwd=None, timeout=300):
+    return subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+
+
+def mirror_dir(thread):
+    return shared_dir() / "mirrors" / thread["id"]
+
+
+def mount_git_mirror(thread):
+    """A shallow clone at the pinned ref, refreshed when the ref changes."""
+    path = mirror_dir(thread)
+    url, ref = git_url(thread["repo"]), thread["ref"]
+    depth = str(thread.get("depth", 1))
+    if not (path / ".git").is_dir():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        result = run(["git", "clone", "--quiet", "--depth", depth, "--branch", ref, url, str(path)])
+        if result.returncode:
+            # a commit cannot be cloned by name: init, fetch the commit, check it out
+            path.mkdir(parents=True, exist_ok=True)
+            steps = [["git", "init", "--quiet"], ["git", "remote", "add", "origin", url],
+                     ["git", "fetch", "--quiet", "--depth", "1", "origin", ref],
+                     ["git", "checkout", "--quiet", "FETCH_HEAD"]]
+            for step in steps:
+                result = run(step, cwd=path)
+                if result.returncode:
+                    shutil.rmtree(path, ignore_errors=True)
+                    return "error", f"clone of {thread['repo']} at {ref} failed: {result.stderr.strip()[:200]}"
+        return "ok", f"cloned at {ref} in {path}"
+    if run(["git", "fetch", "--quiet", "--depth", depth, "origin", ref], cwd=path).returncode:
+        return "warning", f"{path} kept: fetch of {ref} failed (offline?)"
+    run(["git", "checkout", "--quiet", "--force", "FETCH_HEAD"], cwd=path)
+    return "ok", f"at {ref} in {path}"
+
+
+def doctor_git_mirror(thread):
+    path = mirror_dir(thread)
+    if not (path / ".git").is_dir():
+        return "error", f"not mounted: {path} is missing (texo mount)"
+    head = run(["git", "rev-parse", "HEAD"], cwd=path).stdout.strip()
+    wanted = run(["git", "rev-parse", f"{thread['ref']}^{{commit}}"], cwd=path).stdout.strip()
+    if wanted and head != wanted:
+        return "warning", f"{path} is at {head[:12]}, the ref {thread['ref']} is {wanted[:12]}: texo mount"
+    return "ok", f"{path} at {head[:12]}"
+
+
+def doctor_git_remote(thread):
+    result = run(["git", "ls-remote", git_url(thread["repo"]), thread["ref"]], timeout=TIMEOUT)
+    if result.returncode:
+        return "error", f"{thread['repo']} not reachable: {result.stderr.strip()[:200]}"
+    if not result.stdout.strip() and not re.fullmatch(r"[0-9a-f]{7,40}", thread["ref"]):
+        return "error", f"{thread['repo']} has no ref {thread['ref']}"
+    return "ok", f"{thread['repo']} at {thread['ref']}"
+
+
+# -- reading a git-remote source without cloning it -----------------------------------------------
+
+def github_path(thread):
+    """owner/name of a git-remote source on github.com; the reading commands need it."""
+    repo = thread["repo"].removeprefix("https://").removesuffix(".git")
+    if not repo.startswith("github.com/"):
+        raise ValueError(f"{thread['id']}: reading without a clone supports github.com repositories only")
+    return repo.removeprefix("github.com/")
+
+
+def fetch(url, token=None, accept="application/vnd.github+json"):
+    headers = {"Accept": accept, "User-Agent": "texo"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=TIMEOUT) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def remote_list(thread, path="", token=None):
+    """The entries of a folder of the source at its pinned ref."""
+    url = (f"https://api.github.com/repos/{github_path(thread)}/contents/{urllib.parse.quote(path.strip('/'))}"
+           f"?ref={urllib.parse.quote(thread['ref'])}")
+    entries = json.loads(fetch(url, token))
+    if isinstance(entries, dict):
+        entries = [entries]
+    return [{"path": e["path"], "type": e["type"], "size": e.get("size")} for e in entries]
+
+
+def remote_read(thread, path, token=None):
+    """One file of the source at its pinned ref."""
+    url = (f"https://raw.githubusercontent.com/{github_path(thread)}/{urllib.parse.quote(thread['ref'])}/"
+           f"{urllib.parse.quote(path.strip('/'))}")
+    return fetch(url, token, accept="text/plain")
+
+
+def remote_search(thread, query, token):
+    """Code search in the source (GitHub searches its default branch: the hits say where, read at the ref)."""
+    if not token:
+        raise ValueError("searching a source on github.com needs a token: set GITHUB_TOKEN or GH_TOKEN")
+    q = urllib.parse.quote(f"{query} repo:{github_path(thread)}")
+    hits = json.loads(fetch(f"https://api.github.com/search/code?q={q}&per_page=20", token))
+    return [{"path": item["path"], "name": item["name"]} for item in hits.get("items", [])]
+
+
+# -- http ---------------------------------------------------------------------------------------
+
+def doctor_http(thread, url_key="url"):
+    request = urllib.request.Request(thread[url_key], method="HEAD", headers={"User-Agent": "texo"})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            return "ok", f"{thread[url_key]} answers {response.status}"
+    except urllib.error.HTTPError as error:
+        # a server that refuses HEAD or wants a token still answers: it is reachable
+        if error.code in (401, 403, 405):
+            return "ok", f"{thread[url_key]} answers {error.code}"
+        return "error", f"{thread[url_key]} answers {error.code}"
+    except (urllib.error.URLError, TimeoutError) as error:
+        return "error", f"{thread[url_key]} not reachable: {getattr(error, 'reason', error)}"
+
+
+# -- cli ----------------------------------------------------------------------------------------
+
+def cli_version(thread):
+    if not shutil.which(thread["command"]):
+        return None
+    result = run([thread["command"], *(thread.get("version_args") or ["--version"])], timeout=TIMEOUT)
+    return (result.stdout + result.stderr).strip()
+
+
+def mount_cli(thread, allow_install):
+    version = cli_version(thread)
+    if version is not None and thread["version"] in version:
+        return "ok", f"{thread['command']} {thread['version']}"
+    install = thread.get("install")
+    if not install:
+        found = f"found {version[:60]!r}" if version else "not in PATH"
+        return "error", f"{thread['command']} {thread['version']} needed, {found}; no install command declared"
+    if not allow_install:
+        return "pending", f"would run: {install} (texo mount --yes)"
+    result = subprocess.run(install, shell=True, capture_output=True, text=True, timeout=900)
+    if result.returncode:
+        return "error", f"{install} failed: {result.stderr.strip()[:200]}"
+    version = cli_version(thread)
+    if version is None or thread["version"] not in version:
+        return "error", f"{install} ran, but {thread['command']} is not at {thread['version']}"
+    return "ok", f"installed {thread['command']} {thread['version']}"
+
+
+def doctor_cli(thread):
+    version = cli_version(thread)
+    if version is None:
+        return "error", f"{thread['command']} not in PATH (texo mount)"
+    if thread["version"] not in version:
+        return "error", f"{thread['command']} is {version[:60]!r}, the fabric pins {thread['version']}"
+    return "ok", f"{thread['command']} {thread['version']}"
+
+
+# -- mcp ----------------------------------------------------------------------------------------
+
+def mcp_stdio_handshake(command, env=None, cwd=None):
+    """Start an MCP server over stdio, send initialize, read the answer: the server's name or an error."""
+    message = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+               "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                          "clientInfo": {"name": "texo-doctor", "version": "1"}}}
+    try:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                   text=True, env=env, cwd=cwd)
+    except OSError as error:
+        return "error", f"{command[0]} cannot start: {error}"
+    try:
+        out, _ = process.communicate(json.dumps(message) + "\n", timeout=60)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        return "error", "no answer to initialize within 60 s"
+    for line in out.splitlines():
+        try:
+            answer = json.loads(line)
+        except ValueError:
+            continue
+        if answer.get("id") == 1 and "result" in answer:
+            info = answer["result"].get("serverInfo") or {}
+            return "ok", f"MCP server {info.get('name', '?')} {info.get('version', '')}".strip()
+    return "error", "the server did not answer initialize"
