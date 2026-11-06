@@ -147,6 +147,8 @@ def op_search(hub, args):
         payload["mode"] = args["mode"]
     if args.get("show_expired"):
         payload["show_expired"] = True
+    if args.get("as_of"):
+        payload["as_of"] = args["as_of"]
     return hub.call("memory/search", payload)
 
 
@@ -166,7 +168,7 @@ def op_note(hub, args):
     (the default), a fact or a procedure."""
     payload = {key: args.get(key) for key in (
         "name", "body", "kind", "section", "task_id", "project_id", "partner_id", "company_id", "state", "expires",
-        "source_ref", "document_id", "severity", "activities", "keywords", "applies_to")
+        "valid_from", "source_ref", "document_id", "severity", "activities", "keywords", "applies_to")
         if args.get(key) is not None}
     if payload.get("kind", "rule") == "rule":
         payload.setdefault("state", "draft")
@@ -184,7 +186,7 @@ def op_note_update(hub, args):
     """Replace the text of a note (with the version read), its title, section, keywords or dates, or mark it verified."""
     payload = {"note_id": args.get("note_id") or args.get("fact_id")}
     payload.update({key: args[key] for key in (
-        "expected_version", "body", "name", "section", "keywords", "applies_to", "expires", "verified")
+        "expected_version", "body", "name", "section", "keywords", "applies_to", "expires", "valid_from", "verified")
         if args.get(key) not in (None, False)})
     return hub.call("memory/note_update", payload)
 
@@ -525,7 +527,7 @@ def render(name, data):
         return "\n".join(lines) if len(lines) > 1 else lines[0] + "\nnothing to review"
     if name in ("read", "note", "note_append", "note_update", "fact", "fact_append", "fact_update") and "body" in data:
         head = f"{data.get('kind') or 'note'} {data['id']}: {data['title']}"
-        for key in ("state", "severity", "section", "verified", "expires", "stale", "version"):
+        for key in ("state", "severity", "section", "verified", "valid_from", "expires", "superseded_on", "stale", "version"):
             if data.get(key):
                 head += f"  {key} {data[key]}"
         return head + "\n" + data["body"] + ("\n(cut: read with a larger --max-chars)" if data.get("truncated") else "")
@@ -642,7 +644,8 @@ def tool_schemas():
         {"name": "search", "description": "Search the rules, facts and procedures I may read, the documents of the memory (title, summary, keywords and text) and the lessons of every project. Put the person's words in query and synonyms, translations and other names in related_terms; search again with other words when the results miss. Scope tasks searches the episodes instead: title, description and chatter of the tasks I may read (has something like this happened before?), not part of all. Scope sources searches the active cards of the external sources (where the module is installed; also in all): title, public persons, bodies, places, themes, acts, abstract; for a period, a person or a channel use sources_find. mode: lexical (the words), semantic (the meaning, where the hub has vectors: episodes, facts, procedures, lessons, documents, cards; never the rules) or hybrid (both, the default where the vectors are); a hit says which found it (match). A document names the passage that answered (passage: path such as «Art. 43 > comma 2», start) and up to two more to read (passages): read the text from start with document (text, offset), the next passage when the first does not answer, and cite the path. show_expired: the expired notes and lessons too (each says stale expired), for a review. The answer says how the search ran: mode (the one used: lexical when the vectors did not answer), rerank (off, skipped, applied, unavailable), latency_ms.",
          "inputSchema": {"type": "object", "properties": {"query": string, "related_terms": {"type": "array", "items": string},
                                                           "scope": {"type": "string", "enum": list(SCOPES)}, "applies_to": string, "limit": integer,
-                                                          "mode": {"type": "string", "enum": list(MODES)}, "show_expired": {"type": "boolean"}},
+                                                          "mode": {"type": "string", "enum": list(MODES)}, "show_expired": {"type": "boolean"},
+                                                          "as_of": {"type": "string", "description": "YYYY-MM-DD: the facts and procedures that held on that day (started, not yet expired, not yet superseded), superseded ones included"}},
                          "required": ["query"]}},
         {"name": "read", "description": "One note (note_id: a rule, a fact with the version to name in note_update, a procedure) or lesson in full; or any concept of the memory by its OKF id (concept: rules/12, facts/3, procedures/8, lessons/5, documents/9, projects/2, tasks/7; with the external sources, sources/12 for a card). With format okf, as an OKF concept: frontmatter (type, status, generated, verified, stale_after, sources) and body.",
          "inputSchema": {"type": "object", "properties": {"note_id": integer, "fact_id": integer, "lesson_id": integer, "concept": string,
@@ -652,6 +655,7 @@ def tool_schemas():
              "name": string, "body": string, "kind": {"type": "string", "enum": list(KINDS)}, "section": section,
              "task_id": integer, "project_id": integer, "partner_id": integer, "company_id": integer,
              "state": {"type": "string", "enum": ["draft", "active"]}, "expires": string, "source_ref": string,
+             "valid_from": {"type": "string", "description": "YYYY-MM-DD: the first day a fact or a procedure holds, when it is not the day it is written"},
              "document_id": integer, "severity": {"type": "string", "enum": list(SEVERITIES)}, "activities": strings,
              "keywords": strings, "applies_to": string, "generated_by": generated_by, "confirm": confirm},
              "required": ["name", "body", "confirm"]}},
@@ -661,7 +665,7 @@ def tool_schemas():
         {"name": "note_update", "description": "After the person's yes: replace the text of a note (body, with the version returned by read: refused if it changed since), or its title, section, keywords, applies_to, expires; verified true marks it checked today (a rule only by a lead).",
          "inputSchema": {"type": "object", "properties": {
              "note_id": integer, "expected_version": string, "body": string, "name": string, "section": section, "keywords": strings,
-             "applies_to": string, "expires": string, "verified": {"type": "boolean"}, "confirm": confirm}, "required": ["note_id", "confirm"]}},
+             "applies_to": string, "expires": string, "valid_from": string, "verified": {"type": "boolean"}, "confirm": confirm}, "required": ["note_id", "confirm"]}},
         {"name": "fact", "description": "The note tool with kind fact, kept for the clients that call it: what a customer, a project or a task is.",
          "inputSchema": {"type": "object", "properties": {
              "name": string, "body": string, "section": section, "task_id": integer, "project_id": integer, "partner_id": integer,
@@ -874,6 +878,7 @@ def build_parser(extend=None):
     p.add_argument("--mode", choices=MODES, help="the words, the vectors, or both fused (where the hub has texo_vector)")
     p.add_argument("--show-expired", dest="show_expired", action="store_true",
                    help="the expired notes and lessons too, each marked stale: for a review")
+    p.add_argument("--as-of", dest="as_of", help="YYYY-MM-DD: the facts and procedures that held on that day")
     p = sub.add_parser("read"); p.add_argument("--note", dest="note_id", type=int); p.add_argument("--lesson", dest="lesson_id", type=int)
     p.add_argument("--fact", dest="fact_id", type=int, help="a fact: a note id, as --note")
     p.add_argument("--concept", help="an OKF concept id: rules/12, facts/3, lessons/5, documents/9, projects/2, tasks/7, sources/12")
@@ -886,6 +891,7 @@ def build_parser(extend=None):
     p.add_argument("--state", choices=("draft", "active"))
     p.add_argument("--company", dest="company_id", type=int, help="no anchor: this company instead of the current one")
     p.add_argument("--expires"); p.add_argument("--source-ref", dest="source_ref")
+    p.add_argument("--valid-from", dest="valid_from", help="YYYY-MM-DD: the first day a fact or a procedure holds")
     p.add_argument("--document", dest="document_id", type=int, help="the document of the memory the note comes from")
     p.add_argument("--severity", choices=SEVERITIES, help="of a rule: never, must (default) or prefer")
     p.add_argument("--activities", nargs="*", help="the codes of the work it concerns; none: every activity")
@@ -898,7 +904,7 @@ def build_parser(extend=None):
     p.add_argument("note_id", type=int); p.add_argument("--version", dest="expected_version"); p.add_argument("--body")
     p.add_argument("--name"); p.add_argument("--section"); p.add_argument("--keywords", nargs="*")
     p.add_argument("--applies-to", dest="applies_to"); p.add_argument("--expires"); p.add_argument("--verified", action="store_true")
-    p.add_argument("--yes", action="store_true")
+    p.add_argument("--valid-from", dest="valid_from"); p.add_argument("--yes", action="store_true")
     p = sub.add_parser("fact", help="a fact (a note of kind fact) on a task, project or customer; with none, on the organisation")
     p.add_argument("name"); p.add_argument("body"); p.add_argument("--section")
     p.add_argument("--task", dest="task_id", type=int); p.add_argument("--project", dest="project_id", type=int)
