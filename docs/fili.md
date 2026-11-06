@@ -184,7 +184,9 @@ packs/<nome>/
 
 `texo mount` scarica solo la cartella del pacchetto al suo tag, una volta per macchina, in
 `$TEXO_SHARED_DIR/mirrors/pack-<nome>-<versione>`; poi controlla che il tag porti la versione chiesta e che il
-core installato soddisfi `core`, e monta i fili che il pacchetto porta. Con il pacchetto arrivano le sue skill,
+core installato soddisfi `core`, e monta i fili che il pacchetto porta. Un `[[pack]]` del `texo.toml` con `path` (la cartella di un
+pacchetto in sviluppo su questa macchina, con la versione del suo `pack.toml`) si usa così com'è, senza scaricare
+nulla: per chi scrive un pacchetto e ne carica il demo. Con il pacchetto arrivano le sue skill,
 ciascuna con i suoi riferimenti (`skills/<skill>/references/`: delta, playbook, convenzioni), e le skill dei
 suoi fili; il seed entra nel hub solo con `texo seed --apply`. `texo where --pack <nome>` dice dove sta. Un pacchetto porta solo metodo: le
 regole del settore arrivano nel hub con il seed, i valori di una norma (soglie, importi, scadenze) sono fatti
