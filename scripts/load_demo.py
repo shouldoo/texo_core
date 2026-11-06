@@ -306,6 +306,9 @@ class Seeder:
         """The keywords of a record written before follow the data: the weekly review adds the synonyms the
         measure asked for, and the seed brings them to a database seeded earlier (sudo: the data is fictional,
         the writer of the record is the seed itself)."""
+        # a list in the data, a comma-separated text on the record (as the routes merge them)
+        if isinstance(keywords, (list, tuple)):
+            keywords = ", ".join(k.strip() for k in keywords if k and k.strip())
         wanted = keywords or False
         if record[field] != wanted:
             record.sudo().write({field: wanted})
