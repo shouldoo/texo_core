@@ -413,6 +413,9 @@ def render_okf(data):
 def render(name, data):
     if isinstance(data, dict) and data.get("format") == "okf":
         return render_okf(data)
+    if isinstance(data, dict) and data.get("existing"):
+        # an idempotent write (note, fact, lesson, task-note): the hub gave the record back, nothing was written
+        return "already in the memory, nothing written:\n" + render(name, {k: v for k, v in data.items() if k != "existing"})
     if name == "whoami":
         return f"{data['name']} ({data['login']}), role {data['role']}"
     if name == "threads":
