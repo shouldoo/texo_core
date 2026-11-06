@@ -24,7 +24,9 @@ generated again at every run; nothing is deleted.
 The data file: DATABASES, TOKEN_NAME, TOKEN_DAYS, COMPANY, USERS, WORK_GROUPS, TEAM, DELIVERY_STAGES,
 TICKET_STAGES, HOME_STAGES, TICKET_TAG, ASSISTANCE, SOURCES_FOLDER, ATTACHMENTS, ORGANISATION, CUSTOMERS,
 LESSONS, EVAL. ORGANISATION may carry projects of its own (an organisation without customers), a customer may
-have no tickets, a document may take its text from TEXTS (text_file) or be a generated PDF (pdf).
+have no tickets, a document may take its text from TEXTS (text_file) or be a generated PDF (pdf). A task may carry
+its search keywords ("keywords", the curated layer) and a note of its chatter may carry the keywords it gives the
+task, as a session note does: (who, days ago, text, [keywords]).
 
 Imported by the tests, the module only exposes the helpers and seed(): nothing runs without `env`.
 """
@@ -207,21 +209,30 @@ class Seeder:
         if ticket and item.get("days") is not None:
             # a ticket opened in the past: the day it arrived is its creation day
             task.sudo().write({"create_date": datetime.combine(self.day(item["days"]), self.now.time())})
-        for who, days_ago, text in item.get("notes") or []:
-            self.note(task, who, days_ago, text)
+        for who, days_ago, text, *keywords in item.get("notes") or []:
+            # a note may carry its keywords, as a session note does: (who, days ago, text, [keywords])
+            self.note(task, who, days_ago, text, keywords[0] if keywords else None)
         for who, days_ago, hours, text in item.get("worklog") or []:
             self.time(task, who, days_ago, hours, text)
         if item.get("attachment"):
             self.attachment(task, item["attachment"])
+        if "keywords" in item:
+            # the search keywords of the task (the curated layer), merged with those of its notes
+            merged = task._texo_merge_keywords(item.get("keywords"), task.texo_keywords)
+            self.realign_keywords(task, merged, "texo_keywords")
         self.summary["tickets" if ticket else "tasks"] += 1
         return task
 
-    def note(self, task, who, days_ago, text):
-        """An internal note in the chatter of the task, as the person, dated in the past; found by its text."""
+    def note(self, task, who, days_ago, text, keywords=None):
+        """An internal note in the chatter of the task, as the person, dated in the past, with the keywords
+        it gives the task; found by its text."""
         wanted = plain_of(text)
         if any(plain_of(m.body) == wanted for m in task.message_ids):
+            if keywords:
+                merged = task._texo_merge_keywords(keywords, task.texo_keywords)
+                self.realign_keywords(task, merged, "texo_keywords")
             return
-        result = task.with_user(self.users[who])._texo_post_note(text)
+        result = task.with_user(self.users[who])._texo_post_note(text, keywords=keywords)
         self.env["mail.message"].browse(result["message_id"]).sudo().write(
             {"date": datetime.combine(self.day(days_ago), self.now.time())})
 
