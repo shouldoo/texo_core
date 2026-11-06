@@ -19,12 +19,16 @@ nel core, e nessun repository è dedicato a una fonte. Il hub, il connettore del
 1. **Core**: i tipi, i driver, la sintassi, il montaggio, la diagnosi e le regole generali per l'agente
    (citare la fonte letta, chiedere prima di scrivere su un connettore, non mandare a un filo dati di una
    classe sopra la sua).
-2. **Pacchetto**: i fili che un settore suggerisce, con una dichiarazione di partenza, nel `pack.toml` del suo
-   pacchetto (`[[suggested_thread]]` con `id` e `why`). `texo mount` segnala come `info` un filo suggerito che
-   l'organizzazione non ha.
+2. **Pacchetto**: nel `pack.toml` del suo pacchetto, un settore porta i fili che fanno parte del suo metodo
+   (`[[thread]]`) e suggerisce gli altri (`[[suggested_thread]]` con `id` e `why`). Un filo portato si monta con
+   il pacchetto, al `ref` che la versione del pacchetto fissa; può essere solo una fonte pubblica in sola lettura
+   (`git-mirror` o `git-remote`, `data_class = "public"`, nessuna credenziale). Un filo suggerito dipende dai
+   lavori dell'organizzazione (le versioni, i repository che usa): `texo mount` lo segnala come `info` finché il
+   hub non lo dichiara.
 3. **Organizzazione**: i fili montati davvero, con versioni fissate e i nomi delle credenziali, nella
    configurazione del suo hub; gli adattatori su misura in `threads/<id>/` della cartella di lavoro o del suo
-   repository privato.
+   repository privato. Un filo del hub con l'`id` di un filo portato da un pacchetto lo sostituisce (un altro
+   `ref`, per esempio); un `[[thread]]` del `texo.toml` sostituisce entrambi.
 
 ## Dove si dichiarano
 
@@ -172,7 +176,7 @@ o ne cambia la versione su quella cartella.
 
 ```text
 packs/<nome>/
-├── pack.toml        [pack] name, version, core (il core che richiede), work_dirs; [[suggested_thread]]
+├── pack.toml        [pack] name, version, core (il core che richiede), work_dirs; [[thread]]; [[suggested_thread]]
 ├── skills/          le skill del settore, con i loro riferimenti
 ├── seed.toml        attività, sezioni, regole e template di progetto del settore (texo seed)
 └── demo/            facoltativo: un'organizzazione inventata per i test (setup/load-demo.sh)
@@ -180,7 +184,9 @@ packs/<nome>/
 
 `texo mount` scarica solo la cartella del pacchetto al suo tag, una volta per macchina, in
 `$TEXO_SHARED_DIR/mirrors/pack-<nome>-<versione>`; poi controlla che il tag porti la versione chiesta e che il
-core installato soddisfi `core`. `texo where --pack <nome>` dice dove sta. Un pacchetto porta solo metodo: le
+core installato soddisfi `core`, e monta i fili che il pacchetto porta. Con il pacchetto arrivano le sue skill,
+ciascuna con i suoi riferimenti (`skills/<skill>/references/`: delta, playbook, convenzioni), e le skill dei
+suoi fili; il seed entra nel hub solo con `texo seed --apply`. `texo where --pack <nome>` dice dove sta. Un pacchetto porta solo metodo: le
 regole del settore arrivano nel hub con il seed, i valori di una norma (soglie, importi, scadenze) sono fatti
 dell'organizzazione nel hub, con l'articolo letto, la data di verifica e una scadenza.
 
