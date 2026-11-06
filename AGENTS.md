@@ -41,7 +41,10 @@ La memoria è nominata come Open Knowledge Format (OKF v0.2): ogni record è un 
 suo `log.md`. Chiedi con `format: okf` (`texo --okf`) per leggerla così.
 
 - Comincia un task con la skill `texo-sessione`: ruolo, pacchetto di contesto, regole, fili, ricerca, e alla
-  fine la nota sul task, le ore che dà la persona, l'aggiornamento del progetto e le lezioni.
+  fine la nota sul task, le ore che dà la persona, l'aggiornamento del progetto e le lezioni. Se in
+  `.texo/proposals/` c'è una proposta di nota (la scrive l'hook della cartella dalla trascrizione della
+  sessione, con i segreti oscurati), parti da quella: proponila alla persona, scrivila dopo il suo sì, poi
+  cancella il file.
 - Le regole del hub ti vincolano. Se il hub non risponde, dillo e non scrivere nulla nella memoria.
 - Non si scrive nulla senza il sì della persona, con lo stato che il tuo ruolo permette; non cancellare mai:
   una nota nuova supera la vecchia.

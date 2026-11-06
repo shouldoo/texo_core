@@ -126,7 +126,9 @@ compito corrisponde; `texo where --pack <name>` dà la loro cartella) e comincia
 
 ### 5. Alla fine del lavoro
 
-Proponi ogni voce in chat e scrivila solo dopo il sì della persona:
+Proponi ogni voce in chat e scrivila solo dopo il sì della persona. Se in `.texo/proposals/` c'è il file di
+questa sessione (lo scrive l'hook della cartella dalla trascrizione: task toccati, richieste della persona, file,
+commit, errori, con i segreti oscurati), la nota del punto 1 parte da lì; dopo averla scritta cancella il file.
 
 1. **Nota sul task**: una nota interna nel chatter del task, scritta per chi
    la cerca mesi dopo senza ricordarne il titolo, in quattro parti brevi: il

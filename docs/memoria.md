@@ -86,6 +86,12 @@ description del task (la spec), le note interne del suo chatter, il worklog dell
 contiene informazioni del cliente. La scrive l'agente durante il lavoro, dopo il sì della persona. Si
 distilla nell'update del progetto (il presente) e, quando diventa stabile, nella description.
 
+L'hook della cartella di lavoro (`texo hook`, chiamato dagli assistenti che hanno gli hook a fine turno, prima
+di una compattazione e alla chiusura) legge la trascrizione della sessione e lascia in `.texo/proposals/` il
+materiale della nota (task toccati, richieste della persona, file, commit, errori), con i segreti oscurati, e
+chiede all'agente, una volta per sessione, di proporla: la scrittura resta dopo il sì della persona, mai
+dall'hook.
+
 La nota di sessione si scrive per essere ritrovata da chi non ricorda il titolo del task: il problema con le
 parole di chi l'ha sollevato, la causa o il contesto, che cosa si è fatto, e da 5 a 10 parole chiave che
 finiscono nelle parole chiave del task, pesate nella ricerca più del chatter.

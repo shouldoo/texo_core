@@ -157,6 +157,29 @@ def merge_json(path, update, mode=None):
         os.chmod(path, mode)
 
 
+# the events of the assistant and the event of texo hook each one calls
+HOOK_EVENTS = (("Stop", "stop"), ("PreCompact", "precompact"), ("SessionEnd", "session-end"))
+
+
+def hooks_update(fabric):
+    """The hooks of the proposal of the session note (texo hook) in the settings of the assistant: ours are
+    replaced, what the person set stays."""
+    command = texo_command(fabric)
+
+    def ours(entry):
+        return any("texo" in h.get("command", "") and " hook " in h.get("command", "")
+                   for h in entry.get("hooks", []) if isinstance(h, dict))
+
+    def apply(data):
+        hooks = data.setdefault("hooks", {})
+        for event, argument in HOOK_EVENTS:
+            kept = [entry for entry in hooks.get(event, []) if isinstance(entry, dict) and not ours(entry)]
+            kept.append({"hooks": [{"type": "command",
+                                    "command": f"{command} --root {fabric.root} hook {argument}"}]})
+            hooks[event] = kept
+    return apply
+
+
 def write_assistants(fabric, out):
     previous = load_state(fabric).get("mcp_servers", [])
 
@@ -171,6 +194,8 @@ def write_assistants(fabric, out):
 
     merge_json(fabric.root / ".mcp.json", update("mcpServers", "claude"))
     out.write("[ok] Claude Code: .mcp.json\n")
+    merge_json(fabric.root / ".claude" / "settings.local.json", hooks_update(fabric))
+    out.write("[ok] Claude Code: .claude/settings.local.json (hooks)\n")
     merge_json(fabric.root / ".gemini" / "settings.json", update("mcpServers", "gemini", entry=dict))
     out.write("[ok] Gemini CLI: .gemini/settings.json\n")
     profile = Path(os.environ.get("TEXO_AGY_PROFILE", f"~/.antigravity-texo-{fabric.organisation}")).expanduser()
@@ -182,7 +207,8 @@ def write_assistants(fabric, out):
 
 
 SKILL_DIRS = (".agents/skills", ".claude/skills")
-IGNORED = (".texo/", ".mcp.json", ".gemini/settings.json", ".agents/skills/", ".claude/skills/")
+IGNORED = (".texo/", ".mcp.json", ".gemini/settings.json", ".claude/settings.local.json", ".agents/skills/",
+           ".claude/skills/")
 
 
 def skill_sources(fabric):
