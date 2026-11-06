@@ -4,7 +4,7 @@
 #
 #   bash core/setup/coordinamento-up.sh        create the stack (secrets only when missing), build, start
 #
-# The modules come from a release of texo_hub: TEXO_HUB_REF (default 20.0.1.2.0) is cloned into the stack and
+# The modules come from a release of texo_hub: TEXO_HUB_REF (default 20.0.1.2.2) is cloned into the stack and
 # mounted read-only; a new value checks the new release out. Idempotent: Dockerfile and docker-compose.yml are
 # copied again; odoo.conf and pg_password are generated once and never printed; the ports and the release chosen in
 # $TEXO_STACK/.env are kept. Databases are created afterwards, with the commands of
@@ -26,7 +26,7 @@ cp "${TPL}/Dockerfile" "${TPL}/docker-compose.yml" "$S/"
 
 # .env: the choices of the person stay, the missing ones get their default
 touch "${S}/.env"
-for setting in TEXO_HUB_REF=20.0.1.2.0 TEXO_WEB_PORT=8069 TEXO_LONGPOLL_PORT=8072 TEXO_TEI_PORT=8080; do
+for setting in TEXO_HUB_REF=20.0.1.2.2 TEXO_WEB_PORT=8069 TEXO_LONGPOLL_PORT=8072 TEXO_TEI_PORT=8080; do
     grep -q "^${setting%%=*}=" "${S}/.env" || echo "$setting" >> "${S}/.env"
 done
 [ -z "${TEXO_HUB_REF:-}" ] || sed -i "s|^TEXO_HUB_REF=.*|TEXO_HUB_REF=${TEXO_HUB_REF}|" "${S}/.env"
