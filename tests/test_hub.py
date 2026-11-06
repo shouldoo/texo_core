@@ -157,6 +157,13 @@ class CtxTest(unittest.TestCase):
         self.assertEqual(ctx.op_whoami(self.hub, {})["login"], "jdoe")
         self.assertEqual(self.odoo.calls[0], ("whoami", {}))
 
+    def test_an_idempotent_write_says_nothing_was_written(self):
+        shown = ctx.render("fact", {"id": 9, "title": "Warehouse", "kind": "fact", "state": "active",
+                                    "body": "Two locations.", "existing": True})
+        self.assertEqual(shown, "already in the memory, nothing written:\nfact 9: Warehouse  state active\nTwo locations.")
+        self.assertTrue(ctx.render("task_note", {"message_id": 4, "task_id": 7, "keywords": None, "existing": True})
+                        .startswith("already in the memory, nothing written:\n"))
+
     def test_search_sends_the_mode_only_when_asked_and_shows_who_found_a_hit(self):
         ctx.op_search(self.hub, {"query": "uom"})
         self.assertNotIn("mode", self.odoo.calls[-1][1], "none: the configured mode of the hub, or lexical without vectors")
