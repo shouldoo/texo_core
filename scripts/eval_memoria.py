@@ -15,7 +15,8 @@ of real projects), for a demo customer it is the eval/ folder of its repository:
                                           # | paraphrase (other words for the symptom); missing: the seed's own
       "applies_to": "2026",               # optional
       "expected": [{"lesson": 12}, {"note": "Segreti"}]},   # what a good answer returns: lesson, note (a rule), fact,
-                                          # procedure, document or task, by id or by title (resolved on the database)
+                                          # procedure, document, task or source (a card of the external sources,
+                                          # scope sources), by id or by title (resolved on the database)
      {"task_id": 7,                      # a context pack question
       "now": 81,                          # the update that is the present of its project
       "milestone": 5,                     # the milestone of the task (optional)
@@ -48,8 +49,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from texo import hub as ctx  # noqa: E402
 from texo.config import ConfigError, hub_settings  # noqa: E402
 
-KINDS = ("lesson", "note", "fact", "procedure", "document", "task")
-# how a title is resolved on the database: the model and the domain of search_read; a document by its search
+KINDS = ("lesson", "note", "fact", "procedure", "document", "task", "source")
+# how a title is resolved on the database: the model and the domain of search_read; a document and a card of the
+# external sources by their search (the scope of each)
 RESOLVE = {"lesson": ("memory.lesson", []), "note": ("memory.note", [["kind", "=", "rule"]]),
            "fact": ("memory.note", [["kind", "=", "fact"]]), "procedure": ("memory.note", [["kind", "=", "procedure"]]),
            "task": ("project.task", [])}
@@ -72,8 +74,8 @@ def resolve(hub, questions):
 
 
 def _resolve_title(hub, kind, title):
-    if kind == "document":
-        found = [r for r in hub.call("memory/search", {"query": title, "scope": "documents", "limit": 5})["results"]
+    if kind in ("document", "source"):
+        found = [r for r in hub.call("memory/search", {"query": title, "scope": kind + "s", "limit": 5})["results"]
                  if r.get("title") == title]
     else:
         model, domain = RESOLVE[kind]

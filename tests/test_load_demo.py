@@ -38,9 +38,29 @@ class LoadDemoTest(unittest.TestCase):
                    ({"state": "draft", "tags": ["a", "b"]}, 12), ({"state": "active", "tags": ["c"]}, 13)]
         self.assertEqual(load_demo.pack_lessons(lessons, ["a", "b"]), [10, 11], "more shared tags first, no draft")
 
+    def test_the_cards_of_the_external_sources(self):
+        made = []
 
-if __name__ == "__main__":
-    unittest.main()
+        def labels(names, kind):
+            made.extend((kind, name) for name in names or [])
+            return [hash((kind, name)) % 1000 for name in names or []]
+
+        card = {"key": "a", "channel": "UmbriaON", "url": "https://umbriaon.example/a", "title": "Titolo",
+                "published_on": "2026-10-31", "event_date": None, "abstract": "Che cosa dice.", "quotes": None,
+                "persons": ["Mario Rossi"], "bodies": [], "places": ["Terni"], "themes": ["Crisi in Comune"],
+                "acts": None, "keywords": "sfiducia, mozione", "stance": "none", "relevance": 3, "related": ["b", "a", "zz"]}
+        vals = load_demo.card_values(card, 7, labels)
+        self.assertEqual((vals["channel_id"], vals["kind"], vals["relevance"]), (7, "article", "3"))
+        self.assertEqual(vals["published_on"], "2026-10-31 12:00:00")
+        self.assertEqual((vals["event_date"], vals["quotes"], vals["acts"], vals["triage_note"]), (False, False, False, False))
+        self.assertEqual(vals["person_ids"], [(6, 0, [hash(("person", "Mario Rossi")) % 1000])])
+        self.assertEqual(vals["body_ids"], [(6, 0, [])])
+        self.assertEqual(made, [("person", "Mario Rossi"), ("place", "Terni"), ("theme", "Crisi in Comune")])
+        self.assertEqual(load_demo.card_values({"key": "v", "channel": "c", "url": "u", "title": "t", "abstract": "a"}, 1,
+                                               labels)["relevance"], "2", "medium by default")
+        self.assertFalse(load_demo.published_at(None))
+        self.assertEqual(load_demo.related_cards([card, {"key": "b", "related": ["a"]}]), {"a": ["b"], "b": ["a"]},
+                         "an unknown key and the card itself are left out")
 
     def test_the_load_waits_for_the_embedding_service(self):
         class Answer:
@@ -70,3 +90,7 @@ if __name__ == "__main__":
         sleeps.clear()
         self.assertFalse(load_demo.service_ready("http://tei:80", wait=10, step=5, opener=down, sleep=sleeps.append))
         self.assertEqual(len(sleeps), 2, "it gives up after the wait")
+
+
+if __name__ == "__main__":
+    unittest.main()
