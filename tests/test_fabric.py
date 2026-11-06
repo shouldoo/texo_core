@@ -217,8 +217,19 @@ class TestMount(FabricCase):
 
     def test_mount_installs_the_pack_the_threads_the_assistants_and_the_agent_files(self):
         (self.root / ".mcp.json").write_text(json.dumps({"mcpServers": {"mine": {"command": "x"}}}))
+        (self.root / ".claude").mkdir()
+        (self.root / ".claude" / "settings.local.json").write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]},
+                                                                               "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "mine"}]}]}}))
         code, out = self.mount()
         self.assertEqual(code, 0, out)
+        settings = json.loads((self.root / ".claude" / "settings.local.json").read_text())
+        self.assertEqual(settings["permissions"], {"allow": ["Bash(ls)"]}, "what the person set stays")
+        self.assertEqual([h["command"] for e in settings["hooks"]["Stop"] for h in e["hooks"]][0], "mine")
+        self.assertTrue(settings["hooks"]["Stop"][1]["hooks"][0]["command"].endswith(f"--root {self.root} hook stop"))
+        self.assertEqual(sorted(settings["hooks"]), ["PreCompact", "SessionEnd", "Stop"])
+        code, out = self.mount()
+        self.assertEqual(len(json.loads((self.root / ".claude" / "settings.local.json").read_text())["hooks"]["Stop"]), 2,
+                         "mounted twice, written once")
         pack = packs.folder(self.fabric(), {"name": "bakery", "version": "v1.2.0"})
         self.assertTrue((pack / "seed.toml").is_file())
         self.assertFalse((pack.parent / "other").exists(), "only the folder of the pack is checked out")
@@ -241,7 +252,7 @@ class TestMount(FabricCase):
         self.assertNotIn("<core>", agents)
         self.assertIn("@AGENTS.md", (self.root / "CLAUDE.md").read_text())
         ignored = (self.root / ".gitignore").read_text().splitlines()
-        self.assertTrue({"recipes/", "AGENTS.md", ".texo/"} <= set(ignored))
+        self.assertTrue({"recipes/", "AGENTS.md", ".texo/", ".claude/settings.local.json"} <= set(ignored))
 
     def test_a_pack_under_development_is_used_from_its_folder(self):
         local = self.tmp / "dev-marketplace" / "packs" / "bakery"

@@ -22,10 +22,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-from . import bridge, hub, mount, packs, seed, setup_assistants, threads
+from . import bridge, hooks, hub, mount, packs, seed, setup_assistants, threads
 from .config import ConfigError, Fabric, find_root, hub_settings, write_texo_toml
 
-LOCAL = ("init", "mount", "doctor", "threads", "thread", "run-thread", "version", "where")
+LOCAL = ("init", "mount", "doctor", "threads", "thread", "run-thread", "version", "where", "hook")
 
 
 def extend(sub):
@@ -35,6 +35,9 @@ def extend(sub):
     p = sub.add_parser("mount", help="the configuration of the hub: packs, threads, assistants, skills, AGENTS.md")
     p.add_argument("--yes", action="store_true", help="run the install commands of the cli threads")
     p.add_argument("--offline", action="store_true", help="the configuration read last time, without the hub")
+    p = sub.add_parser("hook", help="called by the hooks of an assistant (its JSON on stdin): the proposal of the "
+                                   "session note in .texo/proposals/, and once per session the request to propose it")
+    p.add_argument("event", choices=hooks.EVENTS)
     p = sub.add_parser("where", help="where the core, or an installed pack, is on this machine")
     p.add_argument("--pack")
     sub.add_parser("doctor", help="check the hub, the threads and the credentials")
@@ -69,6 +72,11 @@ def local(args, out, err):
         from . import __version__
         out.write(f"texo {__version__}\n")
         return 0
+    if args.command == "hook":
+        try:
+            return hooks.run(args.event, root=find_root(args.root) if args.root else None, out=out)
+        except Exception:  # noqa: BLE001 - a hook never fails the assistant
+            return 0
     if args.command == "init":
         root = Path(args.root or os.getcwd()).resolve()
         write_texo_toml(root, args.organisation, args.hub_url)
