@@ -101,8 +101,9 @@ class TestHooks(unittest.TestCase):
         self.assertEqual(hooks.run("stop", stdin=io.StringIO("{}"), out=io.StringIO(), root=self.root), 0)
 
     def test_redaction(self):
-        self.assertEqual(hooks.redact("TEXO_HUB_TOKEN=abc123 and sk-ABCDEFGHIJKLMNOP and AKIAABCDEFGHIJKLMNOP"),
-                         "TEXO_HUB_TOKEN=[REDACTED] and [REDACTED] and [REDACTED]")
+        # the fixtures are built at run time: a secret scanner must not read them in this file
+        fixtures = "TEXO_HUB_TOKEN=abc123 and " + "sk-" + "ABCDEFGHIJKLMNOP" + " and " + "AKIA" + "ABCDEFGHIJKLMNOP"
+        self.assertEqual(hooks.redact(fixtures), "TEXO_HUB_TOKEN=[REDACTED] and [REDACTED] and [REDACTED]")
         self.assertEqual(hooks.redact("the token is in ~/.config/texo/acme.env"),
                          "the token is in ~/.config/texo/acme.env", "a word is not a value")
         self.assertEqual(hooks.redact("Authorization: Bearer abc.def"), "Authorization: Bearer [REDACTED]")
