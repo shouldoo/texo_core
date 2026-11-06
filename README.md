@@ -72,13 +72,16 @@ The marketplace is one repository; `packs/<name>/` is a pack and the tag `<name>
 
 ```text
 packs/<name>/
-├── pack.toml        [pack] name, version, core it needs, work_dirs; [[suggested_thread]]
+├── pack.toml        [pack] name, version, core it needs, work_dirs; [[thread]] it carries; [[suggested_thread]]
 ├── skills/          the skills of the sector, each with its references
 ├── seed.toml        activities, sections, rules and project templates of the sector, for texo seed
 └── demo/            optional: a fictional organisation for tests (setup/load-demo.sh)
 ```
 
-A pack carries method only. The rules of a sector reach the hub through its seed; thresholds, amounts, deadlines
+A pack carries method only: its skills with their references, and the public sources of its method as threads
+(`[[thread]]`: a git mirror at a pinned ref, mounted with the pack; the hub may replace one with a thread of the
+same id). The threads that depend on the work of an organisation are suggested (`[[suggested_thread]]`) and
+declared in its hub. The rules of a sector reach the hub through its seed; thresholds, amounts, deadlines
 and tables of a law are facts of the organisation in its hub, with the article read, the date of the verification
 and an expiry.
 

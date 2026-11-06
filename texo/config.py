@@ -70,9 +70,12 @@ def read_env_file(path):
     return values
 
 
-def merge(remote, local, key):
-    """The entries of the hub, then those of texo.toml: an entry with the same key replaces the hub's."""
-    merged = {entry.get(key): dict(entry, origin="hub") for entry in remote}
+def merge(remote, local, key, base=()):
+    """The entries of the packs (base, each with its origin), then the hub's, then those of texo.toml: an entry
+    with the same key replaces the one before."""
+    merged = {entry.get(key): dict(entry) for entry in base}
+    for entry in remote:
+        merged[entry.get(key)] = dict(entry, origin="hub")
     for entry in local:
         merged[entry.get(key)] = dict(entry, origin="local")
     return list(merged.values())
@@ -105,7 +108,10 @@ class Fabric:
 
     @property
     def threads(self):
-        return merge(self.remote.get("threads") or [], self.data.get("thread") or [], "id")
+        """The threads of the installed packs, then the hub's, then those of texo.toml."""
+        from . import packs  # packs reads the configuration: imported here, not at the top
+        return merge(self.remote.get("threads") or [], self.data.get("thread") or [], "id",
+                     base=[thread for pack in self.packs for thread in packs.carried_threads(self, pack)])
 
     @property
     def state_dir(self):

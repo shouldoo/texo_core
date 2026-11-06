@@ -243,6 +243,57 @@ class TestMount(FabricCase):
         ignored = (self.root / ".gitignore").read_text().splitlines()
         self.assertTrue({"recipes/", "AGENTS.md", ".texo/"} <= set(ignored))
 
+    def pack_with_threads(self, threads_toml):
+        """The pack bakery v1.2.0 in another marketplace, carrying the given [[thread]] declarations."""
+        marketplace = self.tmp / "marketplace-threads"
+        repository(marketplace, {"packs/bakery/pack.toml": PACK + threads_toml, "packs/bakery/seed.toml": SEED},
+                   "bakery-v1.2.0")
+        toml = self.root / "texo.toml"
+        toml.write_text(toml.read_text().replace(str(self.marketplace), str(marketplace)))
+
+    def test_a_pack_carries_its_threads_and_the_hub_may_replace_them(self):
+        self.pack_with_threads(f"""
+[[thread]]
+id = "guides"
+type = "source"
+driver = "git-mirror"
+repo = "{self.mirror}"
+ref = "v1"
+skills = "skills"
+data_class = "public"
+guide = "The guides of the sector."
+""")
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        self.assertIn("[ok] guides: cloned v1", out)
+        for base in mount.SKILL_DIRS:
+            self.assertTrue((self.root / base / "upstream-guide" / "SKILL.md").is_file(), "its skills are linked")
+        guides = next(t for t in self.fabric().threads if t["id"] == "guides")
+        self.assertEqual(guides["origin"], "pack bakery")
+        config = json.loads(json.dumps(REMOTE))
+        config["threads"].append({"id": "guides", "type": "source", "driver": "git-mirror", "repo": str(self.mirror),
+                                  "ref": "v1", "skills": "skills", "data_class": "public", "guide": "Ours."})
+        code, out = self.mount(hub=FakeHub(config))
+        self.assertEqual(code, 0, out)
+        guides = next(t for t in self.fabric().threads if t["id"] == "guides")
+        self.assertEqual((guides["origin"], guides["guide"]), ("hub", "Ours."), "the hub replaces the pack's")
+
+    def test_a_pack_carries_no_connector(self):
+        self.pack_with_threads("""
+[[thread]]
+id = "inbox"
+type = "connector"
+driver = "mcp-http"
+url = "https://mail.example/mcp"
+data_class = "customer"
+writes = "confirm"
+guide = "The mail of the customers."
+""")
+        code, out = self.mount()
+        self.assertEqual(code, 1, out)
+        self.assertIn("inbox: a pack bakery carries only public sources", out)
+        self.assertIn("Nothing mounted", out)
+
     def test_the_files_the_person_wrote_are_never_overwritten(self):
         (self.root / "AGENTS.md").write_text("# Our rules\n")
         code, out = self.mount()

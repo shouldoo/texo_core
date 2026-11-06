@@ -75,6 +75,8 @@ def check_fabric(fabric):
         problems.append(("error", f"{HUB_SERVER} is the hub, always mounted: give the thread another id"))
     for thread in fabric.threads:
         problems += threads.check(thread)
+        if str(thread.get("origin", "")).startswith("pack "):
+            problems += packs.thread_problems(thread)
     return problems
 
 

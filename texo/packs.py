@@ -10,6 +10,10 @@ at that tag, once per machine, in $TEXO_SHARED_DIR/mirrors/pack-<name>-<version>
     core = ">=2.0, <3"                  # the core it needs
     work_dirs = ["progetti"]            # working folders texo mount creates
 
+    [[thread]]                          # the threads the pack carries: part of its method, pinned by its version
+    id = "odoo-skills"                  # public sources only (git-mirror or git-remote, data_class public);
+    ...                                 # the hub replaces one by declaring a thread with the same id
+
     [[suggested_thread]]                # the threads the sector suggests: id, why, and a declaration to copy
     id = "odoo-20"
     why = "..."
@@ -39,6 +43,28 @@ def manifest(fabric, pack):
         return tomllib.loads(path.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as error:
         raise ConfigError(f"{path}: {error}") from None
+
+
+PACK_DRIVERS = ("git-mirror", "git-remote")
+
+
+def carried_threads(fabric, pack):
+    """The threads an installed pack carries, each with its origin; none before the pack is installed."""
+    try:
+        data = manifest(fabric, pack)
+    except ConfigError:
+        return []
+    return [dict(thread, origin=f"pack {pack.get('name')}") for thread in (data or {}).get("thread") or []]
+
+
+def thread_problems(thread):
+    """What a pack may not carry: only public, read-only sources; a tool, a connector or a credential is the
+    choice of the administrators of the hub."""
+    if (thread.get("type") != "source" or thread.get("driver") not in PACK_DRIVERS
+            or thread.get("data_class") != "public" or thread.get("auth") or thread.get("env")):
+        return [("error", f"{thread.get('id')}: a {thread.get('origin')} carries only public sources "
+                          f"({' or '.join(PACK_DRIVERS)}, data_class public, no credential): declare it in the hub")]
+    return []
 
 
 def install(fabric, pack):
