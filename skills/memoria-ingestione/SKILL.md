@@ -1,158 +1,160 @@
 ---
 name: memoria-ingestione
 description: >-
-  Bring the documents of a project into the memory of the coordination Odoo, as
-  attachments of the record they belong to: a PDF, a scan, an Office file, an e-mail or a page the person
-  received or found, as a local file, a whole folder (local, or a cloud folder reached
-  through the connector of the session) or an attachment of a record in Odoo. Convert
-  locally (`scripts/ingest.py`, Docling or the light converters), read the converted
-  text, propose the document (where the original is, what it contains, when read)
-  and what it gives (the rules it states, citing the document; the changes to the
-  description of the project, which the person makes; a project update when it changes
-  the state of the work; lessons without the customer), write only after the person's
-  yes, with the state their role allows. The procedures of the organisation in a folder
-  become documents of the organisation, and the rules they state become its rules:
-  the rules bind, the sources do not. A sensitive document is kept without its text.
-  Triggers: "ingerisci questo documento", "leggi questo PDF e metti in memoria", "mappa
-  la documentazione del progetto", "cosa dice la spec allegata", "nel task c'è un
+  Porta i documenti di un progetto nella memoria dell'Odoo di coordinamento, come
+  allegati del record a cui appartengono: un PDF, una scansione, un file Office, un'e-mail
+  o una pagina che la persona ha ricevuto o trovato, come file locale, un'intera cartella
+  (locale, o una cartella cloud raggiunta con il connettore della sessione) o un allegato
+  di un record in Odoo. Converti in locale (`scripts/ingest.py`, Docling o i convertitori
+  leggeri), leggi il testo convertito, proponi il documento (dov'è l'originale, che cosa
+  contiene, quando è stato letto) e ciò che dà (le regole che enuncia, citando il
+  documento; le modifiche alla description del progetto, che fa la persona; un
+  aggiornamento del progetto quando cambia lo stato del lavoro; lezioni senza il
+  cliente), scrivi solo dopo il sì della persona, con lo stato che il suo ruolo
+  permette. Le procedure dell'organizzazione in una cartella diventano documenti
+  dell'organizzazione, e le regole che enunciano diventano sue regole: le regole
+  vincolano, le fonti no. Un documento sensibile si tiene senza il suo testo. Trigger:
+  "ingerisci questo documento", "leggi questo PDF e metti in memoria", "mappa la
+  documentazione del progetto", "cosa dice la spec allegata", "nel task c'è un
   allegato: cosa dice?", "le procedure sono in questa cartella: portale in memoria",
-  "ingest this document", "add this file to the memory", "quali documenti abbiamo su
-  <progetto>".
+  "aggiungi questo file alla memoria", "quali documenti abbiamo su <progetto>",
+  "ingest this document".
 ---
 
 # memoria-ingestione
 
-## Overview
+## Panoramica
 
-A document of the memory is an **attachment of the record it belongs to** (a task, a
-project, a customer; the organisation's own on the company): the
-file itself, or a **link** to an original that stays where the person keeps it (a
-shared drive, a web page). Its title is the name, its summary the description; the
-memory adds the reading date, the fingerprint and, by default, the converted text as
-a second attachment `<name>.md` next to it (searchable: a word present only in the text
-finds the document; a Markdown or text file is its own text). The people see both on
-the record, with its permissions. A rule taken from a document **cites** it
-(`--document <id>` on the rule): when a later reading finds the original changed, the
-rule is marked `source_changed` in the context pack and in the review queue until a
-lead confirms or supersedes it.
+Un documento della memoria è un **allegato del record a cui appartiene** (un task, un
+progetto, un cliente; quelli dell'organizzazione sulla company): il
+file stesso, o un **link** a un originale che resta dove la persona lo tiene (un
+drive condiviso, una pagina web). Il nome è il titolo, la descrizione la sintesi; la
+memoria aggiunge la data di lettura, l'impronta e, di default, il testo convertito come
+secondo allegato `<name>.md` accanto (ricercabile: una parola presente solo nel testo
+trova il documento; un file Markdown o di testo è il proprio testo). Le persone li vedono entrambi
+sul record, con i suoi permessi. Una regola presa da un documento lo **cita**
+(`--document <id>` sulla regola): quando una lettura successiva trova l'originale cambiato, la
+regola è segnata `source_changed` nel pacchetto di contesto e nella coda di revisione finché un
+lead non la conferma o la supera.
+
+Dalla cartella di lavoro:
 
 ```bash
-CTX="texo"                     # from the working folder
 INGEST="python3 $(texo where)/scripts/ingest.py"
-$CTX documents --project <id>                 # the documents already there (fingerprints included)
-$INGEST <file> --project <id> --url "<link>"  # one file whose original lives elsewhere: convert, outline only
-$INGEST <file> --task <id>                    # one file the person gives: it goes on the record itself
-$INGEST <folder> --project <id> --url "<link of the folder>"   # a batch, one yes
-$INGEST --attachment <id>                     # an attachment already on a record in Odoo
-$INGEST <file> --url "<link>"                 # no anchor: a document of the organisation itself (the company)
-$CTX document <id> --text --max-chars 6000    # read a document in slices
+texo documents --project <id>                 # i documenti già presenti (impronte comprese)
+$INGEST <file> --project <id> --url "<link>"  # un file il cui originale sta altrove: converte, solo la struttura
+$INGEST <file> --task <id>                    # un file che dà la persona: va sul record stesso
+$INGEST <folder> --project <id> --url "<link of the folder>"   # un lotto, un solo sì
+$INGEST --attachment <id>                     # un allegato già su un record in Odoo
+$INGEST <file> --url "<link>"                 # nessun appoggio: un documento dell'organizzazione stessa (la company)
+texo document <id> --text --max-chars 6000    # leggi un documento a fette
 ```
 
-| Where the original is | How it reaches `ingest.py` | What the record gets |
+| Dov'è l'originale | Come arriva a `ingest.py` | Che cosa riceve il record |
 |---|---|---|
-| attached to a task or project in Odoo | `--attachment <id>` (downloaded through the hub into a temporary folder, removed at the end) | nothing new: that attachment becomes the document |
-| a shared drive, a cloud folder, a web page | the files downloaded into a temporary folder (a connector thread of the working folder, `.texo/THREADS.md`, lists and downloads them), then the file or the folder, with `--url` | a link to the original (for a batch the link of the folder plus the file name) |
-| a local file of the person, an e-mail saved as `.eml` | the file, without `--url` | the file itself, as an attachment |
+| allegato a un task o a un progetto in Odoo | `--attachment <id>` (scaricato attraverso il hub in una cartella temporanea, rimossa alla fine) | niente di nuovo: quell'allegato diventa il documento |
+| un drive condiviso, una cartella cloud, una pagina web | i file scaricati in una cartella temporanea (un filo connettore della cartella di lavoro, `.texo/THREADS.md`, li elenca e li scarica), poi il file o la cartella, con `--url` | un link all'originale (per un lotto il link della cartella più il nome del file) |
+| un file locale della persona, un'e-mail salvata come `.eml` | il file, senza `--url` | il file stesso, come allegato |
 
-## Workflow & Steps
+## Flusso e passi
 
-### 1. Before converting
-- Check the documents of the record (`$CTX documents`): `ingest.py` skips a fingerprint
-  the record already knows and says which document it is (idempotent); a changed
-  original gets a new reading (`$CTX document-write --id <id>` with the new fingerprint
-  and text), never a second document.
-- Ask the person where the original lives if they did not say it (a link, or the file
-  goes on the record), the anchor
-  (task, project or customer; **none** for a document of the organisation itself, of no
-  customer: it goes on the company, `--company <id>` for another
-  company), and whether the document is sensitive (contracts, data of people,
-  commercial terms): then `--no-text`, and the summary says what it is, not what it
-  says; a sensitive original that must not enter Odoo is brought in as a link
-  (`--url`), never as a file. For a customer that serves vulnerable people: no text, no
-  local copy beyond the conversion, nothing of the content in the chat.
-- The file reaches this machine the way the person chooses: an attachment comes
-  through `--attachment`; a cloud folder is listed and downloaded with a connector
-  thread of the working folder into a temporary folder; an e-mail is saved as `.eml`. Never ask the
-  person to paste a document in the chat.
+### 1. Prima di convertire
+- Controlla i documenti del record (`texo documents`): `ingest.py` salta un'impronta
+  che il record conosce già e dice quale documento è (idempotente); un originale
+  cambiato riceve una nuova lettura (`texo document-write --id <id>` con la nuova impronta
+  e il nuovo testo), mai un secondo documento.
+- Chiedi alla persona dove sta l'originale se non l'ha detto (un link, o il file
+  va sul record), l'appoggio
+  (task, progetto o cliente; **nessuno** per un documento dell'organizzazione stessa, di nessun
+  cliente: va sulla company, `--company <id>` per un'altra
+  company), e se il documento è sensibile (contratti, dati di persone,
+  condizioni commerciali): allora `--no-text`, e la sintesi dice che cos'è, non che cosa
+  dice; un originale sensibile che non deve entrare in Odoo si porta come link
+  (`--url`), mai come file. Per un cliente che serve persone vulnerabili: nessun testo, nessuna
+  copia locale oltre la conversione, niente del contenuto in chat.
+- Il file arriva su questa macchina come sceglie la persona: un allegato arriva
+  con `--attachment`; una cartella cloud si elenca e si scarica con un filo connettore
+  della cartella di lavoro in una cartella temporanea; un'e-mail si salva come `.eml`. Non chiedere mai alla
+  persona di incollare un documento in chat.
 
-### 2. Convert and read
-- `$INGEST <file|folder> ...` without `--yes`: for every file it prints the size, the
-  fingerprint, the outline and where the converted text is (a temporary folder, or
-  `--out <dir>`), says which files are already in the memory and which no converter handles,
-  and writes nothing.
-- Read the converted text from that file. Say in one line what each document is.
-  Docling handles PDF, scans (OCR), Office, HTML, images and e-mails; without it the
-  light converters handle Markdown, text, PDF (`pdftotext`) and DOCX (`python-docx`)
-  when those tools are installed.
+### 2. Converti e leggi
+- `$INGEST <file|folder> ...` senza `--yes`: per ogni file stampa la dimensione,
+  l'impronta, la struttura e dove sta il testo convertito (una cartella temporanea, o
+  `--out <dir>`), dice quali file sono già nella memoria e quali nessun convertitore gestisce,
+  e non scrive nulla.
+- Leggi il testo convertito da quel file. Di' in una riga che cos'è ogni documento.
+  Docling gestisce PDF, scansioni (OCR), Office, HTML, immagini ed e-mail; senza Docling i
+  convertitori leggeri gestiscono Markdown, testo, PDF (`pdftotext`) e DOCX (`python-docx`)
+  quando quegli strumenti sono installati.
 
-### 3. Propose the documents and the facts
-In chat, for the person's yes, one message for the whole lot:
-- each document: title, where the original is (link or file on the record), a summary
-  of a few lines (`--summary` applies to every file of a batch: for different
-  summaries, bring the files in one by one), the anchor, text kept or not;
-- what the document gives, each item for its own place:
-  - a **rule** it states (what an agent must always or never do), citing the document
-    (`--document <id>`, after the document exists), on the project, the customer or, for
-    a document of the organisation, with no anchor;
-  - what it says about the organisation, the customer, the project or a task (who
-    decides, how a process runs, what was agreed): a **fact** on that record, one per
-    entry, in its section, with keywords, citing the document
-    (`$CTX note "<title>" "<text>" --kind fact --section <code> --project <id> --keywords <word>... --document <id> --yes`);
-  - how an operation is done there, step by step: a **procedure**, likewise
+### 3. Proponi i documenti e i fatti
+In chat, per il sì della persona, un solo messaggio per tutto il lotto:
+- ogni documento: titolo, dov'è l'originale (link o file sul record), una sintesi
+  di poche righe (`--summary` vale per ogni file di un lotto: per sintesi
+  diverse, porta i file uno alla volta), l'appoggio, testo tenuto o no;
+- ciò che il documento dà, ogni voce al suo posto:
+  - una **regola** che enuncia (ciò che un agente deve fare sempre o non fare mai), citando il documento
+    (`--document <id>`, dopo che il documento esiste), sul progetto, sul cliente o, per
+    un documento dell'organizzazione, senza appoggio;
+  - ciò che dice dell'organizzazione, del cliente, del progetto o di un task (chi
+    decide, come funziona un processo, che cosa si è concordato): un **fatto** su quel record, uno per
+    voce, nella sua sezione, con parole chiave, citando il documento
+    (`texo note "<title>" "<text>" --kind fact --section <code> --project <id> --keywords <word>... --document <id> --yes`);
+  - come si fa lì un'operazione, passo per passo: una **procedura**, allo stesso modo
     (`--kind procedure`);
-  - a constraint, a scope or a stable decision for the **description** of the project:
-    propose the text, the person edits the description in Odoo;
-  - a change in the state of the work (a delay, a new risk, a milestone moved): a
-    **project update**;
-  - something that helps other projects: a **lesson** without the customer.
-  No personal data, no commercial terms in any of them.
+  - un vincolo, un perimetro o una decisione stabile per la **description** del progetto:
+    proponi il testo, la persona modifica la description in Odoo;
+  - un cambiamento nello stato del lavoro (un ritardo, un rischio nuovo, una milestone spostata): un
+    **aggiornamento del progetto**;
+  - qualcosa che aiuta altri progetti: una **lezione** senza il cliente.
+  Nessun dato personale, nessuna condizione commerciale in nessuno di questi.
 
-### 4. Write after the yes
+### 4. Scrivi dopo il sì
 ```bash
-$INGEST <file|folder> --project <id> --url "<link>" --summary "<text>" --yes   # the documents
+$INGEST <file|folder> --project <id> --url "<link>" --summary "<text>" --yes   # i documenti
 $INGEST --attachment <id> --summary "<text>" --yes
-$CTX note "<title>" "<rule>" --project <id> --document <document id> --yes                  # each rule
-$CTX note "<title>" "<text>" --kind fact|procedure --section <code> --document <document id> --yes   # each fact, procedure
-$CTX update <project id> "<title>" <status> "<what the document changes>" --yes              # when it changes the state
-$CTX lesson "<finding>" "<solution>" --tags <tag>... --yes                                    # each lesson
+texo note "<title>" "<rule>" --project <id> --document <document id> --yes                  # ogni regola
+texo note "<title>" "<text>" --kind fact|procedure --section <code> --document <document id> --yes   # ogni fatto, procedura
+texo update <project id> "<title>" <status> "<what the document changes>" --yes              # quando cambia lo stato
+texo lesson "<finding>" "<solution>" --tags <tag>... --yes                                    # ogni lezione
 ```
-A document has no state: once written it is in the memory, for a member as for a
-lead; the rules a member writes are drafts that wait for the lead. Then
-`$CTX documents --project <id>` shows the documents; delete the temporary folder of a
-download if `--out` was used. Only a lead takes a document out of the memory
-(`$CTX document-remove <id>`): what the memory brought in goes, an attachment the people
-put on the record stays theirs.
+Un documento non ha stato: una volta scritto è nella memoria, per un membro come per un
+lead; le regole che scrive un membro sono bozze che aspettano il lead. Poi
+`texo documents --project <id>` mostra i documenti; cancella la cartella temporanea di uno
+scaricamento se hai usato `--out`. Solo un lead toglie un documento dalla memoria
+(`texo document-remove <id>`): ciò che la memoria ha portato se ne va, un allegato che le persone
+hanno messo sul record resta loro.
 
-### 5. The procedures of the organisation («the procedures are in this folder»)
-The sources are never the memory: the notes that cite them are.
-1. Bring the files of the folder in as documents of the organisation (no anchor: the
-   company), as above, after the yes. They stay sources, searchable.
-2. For each file, propose what it gives, one note per entry, each citing its document
-   and in its section (`operations`, `compliance`, ...): the **procedures** it describes
-   (how an operation is done, step by step: `--kind procedure`), the **facts** it states
-   (`--kind fact`), the **rules** it states for the agents (short, one obligation or
-   prohibition each). A procedure of the agent itself becomes a skill of the working folder
-   or of a pack instead (a separate change, with no customer in it). After the yes,
-   `$CTX note ... --document <id> --yes` for each.
-3. Say that a draft rule binds only once a lead activates it, and that a changed source
-   marks every note that cites it `source_changed`, to re-check.
+### 5. Le procedure dell'organizzazione («le procedure sono in questa cartella»)
+Le fonti non sono mai la memoria: lo sono le note che le citano.
+1. Porta i file della cartella come documenti dell'organizzazione (nessun appoggio: la
+   company), come sopra, dopo il sì. Restano fonti, ricercabili.
+2. Per ogni file, proponi ciò che dà, una nota per voce, ciascuna che cita il suo documento
+   e nella sua sezione (`operations`, `compliance`, ...): le **procedure** che descrive
+   (come si fa un'operazione, passo per passo: `--kind procedure`), i **fatti** che enuncia
+   (`--kind fact`), le **regole** che enuncia per gli agenti (brevi, un obbligo o un
+   divieto ciascuna). Una procedura dell'agente stesso diventa invece una skill della cartella di lavoro
+   o di un pacchetto (una modifica separata, senza clienti). Dopo il sì,
+   `texo note ... --document <id> --yes` per ciascuna.
+3. Di' che una regola in bozza vincola solo quando un lead la attiva, e che una fonte cambiata
+   segna `source_changed` ogni nota che la cita, da ricontrollare.
 
-### 6. An attachment of a record («nel task c'è un allegato: cosa dice?»)
-`$CTX task <id>` shows the record; `$INGEST --attachment <id>` converts it and shows
-the outline; answer from the converted text, quoting only the lines that support the
-answer; propose to bring the attachment into the memory (it stays where it is, with
-its summary and converted text) and what it gives, write after the yes.
+### 6. Un allegato di un record («nel task c'è un allegato: cosa dice?»)
+`texo task <id>` mostra il record; `$INGEST --attachment <id>` lo converte e mostra
+la struttura; rispondi dal testo convertito, citando solo le righe che sostengono la
+risposta; proponi di portare l'allegato nella memoria (resta dov'è, con
+la sua sintesi e il testo convertito) e ciò che dà, scrivi dopo il sì.
 
-## Safety & Invariants
+## Sicurezza e invarianti
 
-- Never write without the person's yes; never paste the original or long extracts in
-  the chat: quote the lines that support a fact, nothing more.
-- A sensitive document keeps no text (`--no-text`) and its summary names the kind of
-  document, not its content.
-- The converted text, the downloads and the temporary files stay out of every git
-  repository (the organisation's, the marketplace, the core, code); a download of an
-  attachment is removed by the script at the end.
-- A link never holds content: it points to the original, nothing more.
-- A cloud folder used as a source is never one with real data of a customer in a test.
-- Deterministic checks: `$CTX documents` before and after; the fingerprint printed by
-  `ingest.py` equals `sha256sum <file>`; a second run of the same batch writes nothing.
+- Non scrivere mai senza il sì della persona; non incollare mai l'originale o estratti lunghi
+  in chat: cita le righe che sostengono un fatto, niente di più.
+- Un documento sensibile non tiene testo (`--no-text`) e la sua sintesi nomina il tipo di
+  documento, non il suo contenuto.
+- Il testo convertito, gli scaricamenti e i file temporanei restano fuori da ogni repository
+  git (quello dell'organizzazione, il marketplace, il core, il codice); lo scaricamento di un
+  allegato lo rimuove lo script alla fine.
+- Un link non contiene mai contenuto: punta all'originale, niente di più.
+- Una cartella cloud usata come fonte non è mai una con dati reali di un cliente in un test.
+- Controlli deterministici: `texo documents` prima e dopo; l'impronta stampata da
+  `ingest.py` è uguale a `sha256sum <file>`; una seconda esecuzione dello stesso lotto non scrive nulla.

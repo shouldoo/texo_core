@@ -237,7 +237,7 @@ class TestMount(FabricCase):
             self.assertTrue((self.root / base / "texo-sessione").exists() or not (CORE / "skills").is_dir())
         agents = (self.root / "AGENTS.md").read_text()
         self.assertIn(mount.GENERATED, agents)
-        self.assertIn("Skill packs: bakery v1.2.0", agents)
+        self.assertIn("Pacchetti: bakery v1.2.0", agents)
         self.assertNotIn("<core>", agents)
         self.assertIn("@AGENTS.md", (self.root / "CLAUDE.md").read_text())
         ignored = (self.root / ".gitignore").read_text().splitlines()

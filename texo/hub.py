@@ -754,17 +754,17 @@ def instructions(hub):
     try:
         data = hub.call("memory/rules")
     except HubError as error:
-        return (f"The coordination Odoo (memory) is not reachable: {error}. Say it to the person and write nothing "
-                "to the memory until it answers.")
-    text = f"{data['rules']}\n\nMy role in the hub: {data['role']}."
+        return (f"L'Odoo di coordinamento (la memoria) non è raggiungibile: {error}. Dillo alla persona "
+                "e non scrivere nulla nella memoria finché non risponde.")
+    text = f"{data['rules']}\n\nIl mio ruolo nel hub: {data['role']}."
     if data.get("activities"):
-        text += "\n\nActivities of the organisation (the activity of memory/context): " + "; ".join(
+        text += "\n\nAttività dell'organizzazione (l'activity di memory/context): " + "; ".join(
             f"{a['code']} ({a['description'] or a['name']})" for a in data["activities"]) + "."
     if data.get("sections"):
-        text += "\n\nSections of the organisation (the section of a note): " + "; ".join(
+        text += "\n\nSezioni dell'organizzazione (la section di una nota): " + "; ".join(
             f"{s['code']} ({s['description'] or s['name']})" for s in data["sections"]) + "."
     if hub.threads:
-        text += "\n\nThreads of this fabric (the tool threads gives each guide): " + "; ".join(
+        text += "\n\nFili di questa cartella (lo strumento threads dà la guida di ognuno): " + "; ".join(
             f"{t['id']} ({t['type']}, data_class {t['data_class']}, writes {t.get('writes', 'never')})"
             for t in hub.threads) + "."
     return text
@@ -776,8 +776,8 @@ def call_tool(hub, name, arguments):
         return f"unknown tool {name}", True
     arguments = dict(arguments or {})
     if name in WRITE_TOOLS and not arguments.pop("confirm", False):
-        return ("Needs confirmation: show the person what you are about to write and call again with "
-                "confirm: true after their yes. Nothing was written."), False
+        return ("Serve una conferma: mostra alla persona che cosa stai per scrivere e richiama con "
+                "confirm: true dopo il suo sì. Non è stato scritto nulla."), False
     try:
         data = OPERATIONS[name](hub, arguments)
     except HubError as error:

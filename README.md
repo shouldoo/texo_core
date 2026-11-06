@@ -116,6 +116,13 @@ Outside a working folder the CLI takes the hub from `TEXO_HUB_URL` and `TEXO_HUB
 | `scripts/` | `ingest.py` (documents into the memory, Docling or light converters), `eval_memoria.py` and `eval_varianti.py` (the measure of the search), `load_demo.py`, the checks every Texo repository runs (`check_isolation.py`, `check_agents.py`, `check_skills.py`, `check_okf.py`, `check_attribution.py`) |
 | `setup/` | `install.sh`, `install-git-hooks.sh`, `coordinamento-up.sh` (a local coordination Odoo with texo_hub at a release), `load-demo.sh` (the demo of a pack into a test database), `install-docling.sh` |
 
+## Language
+
+What an agent reads at work is Italian: `AGENTS.md` (written into every working folder), the skills, `docs/`, the
+playbooks, the files `texo mount` generates and the instructions of the MCP server `memoria` around the rules. The
+descriptions of the MCP tools and the rules every session starts with (`texo_hub`) are English. Code, comments,
+commit messages, pull requests and this README are English. One file, one language.
+
 ## Checks
 
 The workflow `checks` runs the unit tests (Python 3.11 and 3.13), `ruff`, `shellcheck`, gitleaks, and the checks of

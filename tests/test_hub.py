@@ -151,7 +151,7 @@ class CtxTest(unittest.TestCase):
         self.assertNotIn("confirm", names["sources_find"]["inputSchema"].get("required", []), "reading needs no yes")
         refused = ctx.handle_message(self.hub, {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
             "name": "sources_propose", "arguments": {"item_id": 22, "action": "keep"}}})
-        self.assertIn("Needs confirmation", refused["result"]["content"][0]["text"])
+        self.assertIn("Serve una conferma", refused["result"]["content"][0]["text"])
 
     def test_call_strips_slash_and_sends_bearer(self):
         self.assertEqual(ctx.op_whoami(self.hub, {})["login"], "jdoe")
@@ -238,7 +238,7 @@ class CtxTest(unittest.TestCase):
         ctx.op_note(self.hub, {"name": "x", "body": "y", "severity": "never", "activities": ["code", "deploy"]})
         self.assertEqual(self.odoo.calls[-1][1], {"name": "x", "body": "y", "severity": "never",
                                                   "activities": ["code", "deploy"], "state": "draft"})
-        self.assertIn("Activities of the organisation (the activity of memory/context): code (Writing code.); "
+        self.assertIn("Attività dell'organizzazione (l'activity di memory/context): code (Writing code.); "
                       "deploy (Deploy).", ctx.instructions(self.hub))
         note = next(t for t in ctx.tool_schemas() if t["name"] == "note")["inputSchema"]["properties"]
         self.assertEqual(note["severity"]["enum"], ["never", "must", "prefer"])
@@ -259,7 +259,7 @@ class CtxTest(unittest.TestCase):
         self.assertIn("3 A ~ 4 B (71%)", text)
         refused = ctx.handle_message(self.hub, {"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                                                 "params": {"name": "confirm", "arguments": {"note_id": 9}}})
-        self.assertIn("Needs confirmation", refused["result"]["content"][0]["text"])
+        self.assertIn("Serve una conferma", refused["result"]["content"][0]["text"])
         done = ctx.handle_message(self.hub, {"jsonrpc": "2.0", "id": 8, "method": "tools/call",
                                              "params": {"name": "confirm", "arguments": {"note_id": 9, "expires": "2027-01-01", "confirm": True}}})
         self.assertFalse(done["result"]["isError"])
@@ -270,7 +270,7 @@ class CtxTest(unittest.TestCase):
         self.assertEqual(init["result"]["serverInfo"]["name"], "memoria")
         self.assertEqual(init["result"]["serverInfo"]["version"], __version__, "the version of the core")
         # the rules of the session are the instructions of the server: no call needed to read them
-        self.assertTrue(init["result"]["instructions"].startswith("Working memory\n\nMy role in the hub: lead.\n\n"))
+        self.assertTrue(init["result"]["instructions"].startswith("Working memory\n\nIl mio ruolo nel hub: lead.\n\n"))
         self.assertIsNone(ctx.handle_message(self.hub, {"jsonrpc": "2.0", "method": "notifications/initialized"}))
         tools = ctx.handle_message(self.hub, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]
         names = [t["name"] for t in tools]
@@ -278,7 +278,7 @@ class CtxTest(unittest.TestCase):
         self.assertNotIn("procedure", names, "the procedures are documents: no tool of their own")
         refused = ctx.handle_message(self.hub, {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                                                 "params": {"name": "note", "arguments": {"name": "x", "body": "y"}}})
-        self.assertIn("Needs confirmation", refused["result"]["content"][0]["text"])
+        self.assertIn("Serve una conferma", refused["result"]["content"][0]["text"])
         self.assertFalse(any(route == "memory/note" for route, _ in self.odoo.calls))
         written = ctx.handle_message(self.hub, {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
                                                 "params": {"name": "note", "arguments": {"name": "x", "body": "y", "project_id": 2, "confirm": True}}})
@@ -293,8 +293,8 @@ class CtxTest(unittest.TestCase):
     def test_instructions_without_the_hub_say_write_nothing(self):
         bad = ctx.Hub("http://odoo.test", "bad", opener=self.odoo)
         text = ctx.handle_message(bad, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})["result"]["instructions"]
-        self.assertIn("not reachable", text)
-        self.assertIn("write nothing", text)
+        self.assertIn("non è raggiungibile", text)
+        self.assertIn("non scrivere nulla nella memoria", text)
         self.assertEqual(ctx.render("rules", {"role": "member", "rules": "R", "company_rules": [{}]}),
                          "role: member (1 rules of the organisation)\nR")
 
@@ -307,7 +307,7 @@ class CtxTest(unittest.TestCase):
         self.assertIn("warnings: now_stale", text)
         refused = ctx.handle_message(self.hub, {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
             "name": "update", "arguments": {"project_id": 2, "name": "Week 44", "status": "on_track", "description": "Done."}}})
-        self.assertIn("Needs confirmation", refused["result"]["content"][0]["text"])
+        self.assertIn("Serve una conferma", refused["result"]["content"][0]["text"])
         env = {"TEXO_HUB_URL": "http://odoo.test", "TEXO_HUB_TOKEN": "good"}
         with unittest.mock.patch.dict(ctx.os.environ, env), unittest.mock.patch.object(ctx, "Hub", lambda u, t: self.hub):
             self.assertEqual(cli.main(["update", "2", "Week 44", "on_track", "Done."], out=io.StringIO(), err=io.StringIO()), 2)
