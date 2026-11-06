@@ -172,6 +172,10 @@ class CtxTest(unittest.TestCase):
         self.assertNotIn("show_expired", self.odoo.calls[-1][1])
         ctx.op_search(self.hub, {"query": "uom", "show_expired": True})
         self.assertTrue(self.odoo.calls[-1][1]["show_expired"])
+        ctx.op_search(self.hub, {"query": "tariff", "as_of": "2026-02-15"})
+        self.assertEqual(self.odoo.calls[-1][1]["as_of"], "2026-02-15")
+        ctx.op_note(self.hub, {"name": "Tariff", "body": "45 an hour", "kind": "fact", "valid_from": "2026-03-01"})
+        self.assertEqual(self.odoo.calls[-1][1]["valid_from"], "2026-03-01")
         # how the search ran, when the hub says it; an expired hit says so
         shown = ctx.render("search", {"results": [
             {"id": 9, "title": "Old tariff", "state": "active", "kind": "fact", "fact": True, "snippet": "flat",
