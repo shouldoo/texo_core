@@ -162,6 +162,14 @@ class CtxTest(unittest.TestCase):
         self.assertNotIn("mode", self.odoo.calls[-1][1], "none: the configured mode of the hub, or lexical without vectors")
         ctx.op_search(self.hub, {"query": "uom", "mode": "hybrid"})
         self.assertEqual(self.odoo.calls[-1][1]["mode"], "hybrid")
+        self.assertNotIn("show_expired", self.odoo.calls[-1][1])
+        ctx.op_search(self.hub, {"query": "uom", "show_expired": True})
+        self.assertTrue(self.odoo.calls[-1][1]["show_expired"])
+        # how the search ran, when the hub says it; an expired hit says so
+        shown = ctx.render("search", {"results": [
+            {"id": 9, "title": "Old tariff", "state": "active", "kind": "fact", "fact": True, "snippet": "flat",
+             "stale": "expired"}], "mode": "hybrid", "rerank": "applied", "latency_ms": 212})
+        self.assertEqual(shown, "9  [fact/active, expired]  Old tariff\n    flat\n(hybrid, rerank applied, 212 ms)")
         self.assertEqual(set(ctx.MODES), {"lexical", "semantic", "hybrid"})
         shown = ctx.render("search", {"results": [
             {"id": 3, "title": "UoM", "state": "active", "lesson": True, "snippet": "the field"},
