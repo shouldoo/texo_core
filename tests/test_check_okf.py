@@ -1,4 +1,4 @@
-"""Tests of scripts/check_okf.py: the knowledge of an industry as an Open Knowledge Format bundle."""
+"""Tests of scripts/check_okf.py: a knowledge bundle as an Open Knowledge Format bundle."""
 import io
 import sys
 import tempfile
@@ -19,7 +19,7 @@ class CheckOkfTest(unittest.TestCase):
             path.write_text(text, encoding="utf-8")
         return root
 
-    def test_the_knowledge_of_an_industry_at_its_root(self):
+    def test_a_bundle_at_its_root(self):
         root = self.bundle({
             "INDEX.md": '---\ntype: "Index"\ntitle: "I"\ndescription: "d"\n---\n# I\n',
             "reference/v20/models.md": '---\ntype: "Reference"\ntitle: "M"\ndescription: "m"\n---\n',

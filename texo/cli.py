@@ -43,7 +43,7 @@ def extend(sub):
     p.add_argument("thread_id")
     p.add_argument("action", choices=("ls", "read", "search"))
     p.add_argument("argument", nargs="?", default="", help="the path (ls, read) or the query (search)")
-    p = sub.add_parser("seed", help="the seed of the industries into the hub: a dry run, then --apply --yes")
+    p = sub.add_parser("seed", help="the seed of the packs into the hub: a dry run, then --apply --yes")
     p.add_argument("--apply", action="store_true")
     p.add_argument("--yes", action="store_true")
     p = sub.add_parser("run-thread", help="an MCP thread with its credentials (started by the assistants)")

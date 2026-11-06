@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""check_okf.py — the knowledge of an industry as an Open Knowledge Format bundle (CI).
+"""check_okf.py — a knowledge bundle as an Open Knowledge Format bundle (CI).
 
-The procedural memory of an industry (INDEX.md, conventions/, reference/, playbooks/ at its root, or a knowledge/
+The procedural memory of a bundle (INDEX.md, conventions/, reference/, playbooks/ at its root, or a knowledge/
 folder) follows Open Knowledge Format
 (OKF v0.2, https://github.com/GoogleCloudPlatform/open-knowledge-format; docs/memoria.md,
 «Nomenclatura»), like the memory the hub serves. Every Markdown file is a concept:
@@ -14,7 +14,7 @@ folder) follows Open Knowledge Format
     ---
 
 Values are JSON, which is YAML (a plain scalar is accepted too). The root index is INDEX.md, kept
-in capitals because the whole industry points to it: a concept of type Index with the okf_version
+in capitals because the whole bundle points to it: a concept of type Index with the okf_version
 of the bundle, where OKF would have an index.md without frontmatter.
 
     python3 scripts/check_okf.py [--root <repository>]           # check, exit 1 on an error
@@ -100,17 +100,17 @@ def check_file(path, rel):
     return errors
 
 
-# An industry keeps its knowledge at the root of its repository: INDEX.md and these folders.
-INDUSTRY_FOLDERS = ("conventions", "reference", "playbooks")
+# A bundle may keep its knowledge at its root: INDEX.md and these folders.
+ROOT_FOLDERS = ("conventions", "reference", "playbooks")
 
 
 def bundle_files(root):
-    """The Markdown files of the bundle: knowledge/ of a repository, or the knowledge of an industry."""
+    """The Markdown files of the bundle: knowledge/ of a repository, or a bundle at its root."""
     if (root / BUNDLE).is_dir():
         return sorted((root / BUNDLE).rglob("*.md"))
     if not (root / "INDEX.md").is_file():
         return []
-    return [root / "INDEX.md"] + sorted(p for folder in INDUSTRY_FOLDERS for p in (root / folder).rglob("*.md"))
+    return [root / "INDEX.md"] + sorted(p for folder in ROOT_FOLDERS for p in (root / folder).rglob("*.md"))
 
 
 def check(root):
@@ -219,7 +219,7 @@ def main(argv=None):
         return 0
     if args.write:
         if not (root / BUNDLE).is_dir():
-            print("--write derives the frontmatter of knowledge/ only: write it by hand in an industry")
+            print("--write derives the frontmatter of knowledge/ only: write it by hand in a bundle at its root")
             return 2
         write(root)
     errors = check(root)
