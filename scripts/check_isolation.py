@@ -4,7 +4,7 @@
 Checks every tracked text file:
   1. no absolute home paths (/home/<user>/, /Users/<user>/);
   2. no name from the isolation list: the customers, people and places that must never appear in a shared
-     repository (core, hub, industry, demo customers), one regular expression per line. The list is never
+     repository (core, hub, marketplace), one regular expression per line. The list is never
      versioned: in CI it comes from the secret of the organisation (the variable ISOLATION_PATTERNS), on a
      machine from ~/.config/texo/isolation-forbidden.txt or the file named by ISOLATION_FORBIDDEN;
   3. every `setup/...` or `scripts/...` script a file mentions exists in the repository;

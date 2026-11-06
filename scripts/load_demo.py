@@ -12,7 +12,7 @@ terminal:
 
     bash core/setup/load-demo.sh <database> [--create]
 
-The wrapper pipes into `odoo shell` of the coordination stack: SEEDS (the hub/seed.toml of the industries of the
+The wrapper pipes into `odoo shell` of the coordination stack: SEEDS (the seed.toml of the packs of the
 fabric, applied first as the administrator, so the activities and sections the data use exist), TEXTS (the
 converted texts of demo/texts/*.md, for the documents that name a text_file), VECTOR (the embedding service named
 by TEXO_VECTOR_ENDPOINT and TEXO_VECTOR_API, when the person gives one), the data file and this file. It
@@ -347,12 +347,12 @@ class Seeder:
             self.users[role] = user
         self.summary["users"] = {role: user.id for role, user in self.users.items()}
 
-    def industries(self):
-        """The seed of the industries of the fabric, as its administrator: the activities, sections, rules and
+    def seeds(self):
+        """The seed of the packs of the fabric, as its administrator: the activities, sections, rules and
         templates of the sector, before the data that use them."""
         for payload in globals().get("SEEDS") or []:
             result = self.env["memory.seed"].with_user(self.users["admin"])._agent_seed(**dict(payload, apply=True))
-            self.summary.setdefault("industries", {})[payload["industry"]] = result["counts"]
+            self.summary.setdefault("seeds", {})[payload["industry"]] = result["counts"]
 
     def organisation(self):
         """The memory of the organisation itself (the company): documents, rules, facts and procedures; its
@@ -534,7 +534,7 @@ def seed(env):
         raise SystemExit(f"refusing to seed {env.cr.dbname!r}: only {', '.join(data.DATABASES)} hold fictional data")
     seeder = Seeder(env)
     seeder.people()
-    seeder.industries()
+    seeder.seeds()
     seeder.organisation()
     eval_set = []
     for customer in data.CUSTOMERS:
