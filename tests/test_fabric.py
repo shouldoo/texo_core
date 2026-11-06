@@ -243,6 +243,26 @@ class TestMount(FabricCase):
         ignored = (self.root / ".gitignore").read_text().splitlines()
         self.assertTrue({"recipes/", "AGENTS.md", ".texo/"} <= set(ignored))
 
+    def test_a_pack_under_development_is_used_from_its_folder(self):
+        local = self.tmp / "dev-marketplace" / "packs" / "bakery"
+        (local / "skills" / "proofing").mkdir(parents=True)
+        (local / "pack.toml").write_text(PACK)
+        (local / "seed.toml").write_text(SEED)
+        (local / "skills" / "proofing" / "SKILL.md").write_text("---\nname: proofing\ndescription: d\n---\n")
+        toml = self.root / "texo.toml"
+        toml.write_text(toml.read_text() + f'\n[[pack]]\nname = "bakery"\nversion = "v1.2.0"\npath = "{local}"\n')
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        self.assertIn(f"[ok] pack bakery v1.2.0: a pack under development, used as it is: {local}", out)
+        self.assertEqual(packs.folder(self.fabric(), self.fabric().packs[0]), local)
+        self.assertFalse((self.tmp / "shared" / "mirrors" / "pack-bakery-v1.2.0").exists(), "nothing checked out")
+        for base in mount.SKILL_DIRS:
+            self.assertTrue((self.root / base / "proofing" / "SKILL.md").is_file())
+        (local / "pack.toml").unlink()
+        code, out = self.mount()
+        self.assertEqual(code, 1)
+        self.assertIn(f"[error] pack bakery v1.2.0: no pack.toml in {local}", out)
+
     def pack_with_threads(self, threads_toml):
         """The pack bakery v1.2.0 in another marketplace, carrying the given [[thread]] declarations."""
         marketplace = self.tmp / "marketplace-threads"

@@ -17,7 +17,12 @@ at that tag, once per machine, in $TEXO_SHARED_DIR/mirrors/pack-<name>-<version>
     [[suggested_thread]]                # the threads the sector suggests: id, why, and a declaration to copy
     id = "odoo-20"
     why = "..."
+
+A pack under development on this machine is declared in texo.toml with its folder (path = "/.../packs/<name>",
+with the version its pack.toml carries): nothing is checked out, the folder is used as it is. For the people who
+write a pack and load its demo; never in the hub, which knows only released packs.
 """
+import pathlib
 import tomllib
 
 from . import threads
@@ -32,6 +37,9 @@ def thread_of(fabric, pack):
 
 
 def folder(fabric, pack):
+    """The folder of the pack on this machine: the checkout of its tag, or its path when it is under development."""
+    if pack.get("path"):
+        return pathlib.Path(pack["path"]).expanduser()
     return threads.mirror_dir(thread_of(fabric, pack)) / "packs" / pack["name"]
 
 
@@ -68,4 +76,9 @@ def thread_problems(thread):
 
 
 def install(fabric, pack):
+    if pack.get("path"):
+        path = folder(fabric, pack)
+        if (path / "pack.toml").is_file():
+            return "ok", f"a pack under development, used as it is: {path}"
+        return "error", f"no pack.toml in {path}"
     return threads.mount_git_mirror(thread_of(fabric, pack))
