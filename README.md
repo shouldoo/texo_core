@@ -62,6 +62,8 @@ AGENTS.md, CLAUDE.md, GEMINI.md             the rules of the core and the index 
                                             when absent or written by mount)
 .texo/                                      config.json, THREADS.md, threads.json
 .mcp.json, .gemini/settings.json            the MCP servers: memoria and the MCP threads
+.claude/settings.local.json                 the hooks of the proposal of the session note (texo hook)
+.texo/proposals/                            the proposals of the session notes the hooks leave
 .agents/skills/, .claude/skills/            links to the skills of core, threads, packs and the folder's own skills/
 <work_dirs of the packs>/                   e.g. progetti/ for the Odoo partners
 ```
@@ -102,6 +104,7 @@ and an expiry.
 | `config-set <file> [--apply --yes]` | administrators: the hub made to say what a TOML file with `[[pack]]` and `[[thread]]` says (a list left out is not touched); a dry run first |
 | `mcp` | the MCP server `memoria` over stdio: the rules of the session as instructions, the memory as tools |
 | `run-thread <id>` | started by the assistants: an MCP thread with its credentials, so no token is written in a configuration file |
+| `hook stop\|precompact\|session-end` | called by the hooks of an assistant with its JSON on stdin: reads the transcript of the session and leaves in `.texo/proposals/` the material of the session note (the tasks worked on, what the person asked, the files, the commits, the errors; secrets redacted); at the end of a turn that worked on a task without writing its note it asks the agent, once per session, to propose the note. The hook never writes in the hub: the agent proposes, the person says yes |
 | `whoami`, `rules`, `context`, `search`, `read`, `note`, `lesson`, `task`, `task-note`, `log-time`, `update`, `review`, `documents`, `document-write`, `sources-*`, … | the memory, as the person: every write needs `--yes` after the person agreed |
 
 Outside a working folder the CLI takes the hub from `TEXO_HUB_URL` and `TEXO_HUB_TOKEN`.
