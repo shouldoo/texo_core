@@ -18,6 +18,9 @@ class FakeHub:
         self.payloads.append(payload)
         if payload["scope"] == "tasks":
             return {"results": [{"id": 131, "task": True, "title": "Componente non scaricato"}]}
+        if payload["scope"] == "sources":
+            return {"results": [{"id": 9, "source": True, "title": "Terni, crisi in Comune", "state": "active"},
+                                {"id": 10, "source": True, "title": "Terni, crisi in Comune", "state": "active"}]}
         if "uom" in payload["query"]:
             return {"results": [{"id": 40, "state": "active", "kind": "context"}, {"id": 12, "lesson": True, "state": "active"}]}
         if "procedura" in payload["query"]:
@@ -57,9 +60,12 @@ class EvalMemoriaTest(unittest.TestCase):
             {"query": "nothing known", "scope": "lessons", "class": "paraphrase", "expected": [{"lesson": 99}]},
             {"query": "procedura di rilascio", "scope": "procedures", "class": "keywords", "expected": [{"procedure": 7}]},
             {"query": "il pezzo resta a stock", "scope": "tasks", "class": "paraphrase", "expected": [{"task": 131}]},
+            {"query": "crisi", "scope": "sources", "class": "temporale", "expected": [{"source": 10}, {"note": 9}]},
         ]
         outcome = ev.evaluate(FakeHub(), questions, k=5)
-        self.assertEqual([rank for _, rank in outcome], [2, None, 1, 1])
+        self.assertEqual([rank for _, rank in outcome], [2, None, 1, 1, 2], "a card is a source, never a note")
+        questions.pop()
+        outcome.pop()
         out = io.StringIO()
         hits, mrr = ev.report(outcome, 5, out)
         text = out.getvalue()
@@ -77,6 +83,8 @@ class EvalMemoriaTest(unittest.TestCase):
 class ResolveHub:
     def call(self, route, payload):
         if route == "memory/search":
+            if payload["scope"] == "sources":
+                return {"results": [{"id": 21, "title": "Terni, crisi in Comune", "source": True}]}
             assert payload["scope"] == "documents"
             return {"results": [{"id": 9, "title": "Annex (sintesi)", "document": True}, {"id": 10, "title": "Altro"}]}
         assert route == "search_read"
@@ -98,6 +106,9 @@ class ResolveTest(unittest.TestCase):
         self.assertEqual(questions[0]["expected"], [{"lesson": 12}, {"note": 40}, {"note": 41}])
         self.assertEqual(questions[1]["expected"], [{"document": 9}])
         self.assertEqual(questions[2]["expected"], [{"task": 131}])
+        cards = [{"query": "v", "scope": "sources", "expected": [{"source": "Terni, crisi in Comune"}]}]
+        ev.resolve(ResolveHub(), cards)
+        self.assertEqual(cards[0]["expected"], [{"source": 21}], "a card of the external sources, by its title")
         with self.assertRaises(ValueError):
             ev.resolve(ResolveHub(), [{"query": "w", "expected": [{"fact": "Nessun fatto"}]}])
 

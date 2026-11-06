@@ -23,10 +23,20 @@ generated again at every run; nothing is deleted.
 
 The data file: DATABASES, TOKEN_NAME, TOKEN_DAYS, COMPANY, USERS, WORK_GROUPS, TEAM, DELIVERY_STAGES,
 TICKET_STAGES, HOME_STAGES, TICKET_TAG, ASSISTANCE, SOURCES_FOLDER, ATTACHMENTS, ORGANISATION, CUSTOMERS,
-LESSONS, EVAL. ORGANISATION may carry projects of its own (an organisation without customers), a customer may
-have no tickets, a document may take its text from TEXTS (text_file) or be a generated PDF (pdf). A task may carry
-its search keywords ("keywords", the curated layer) and a note of its chatter may carry the keywords it gives the
-task, as a session note does: (who, days ago, text, [keywords]).
+LESSONS, EVAL, and SOURCES when the demo has a press review. ORGANISATION may carry projects of its own (an
+organisation without customers), a customer may have no tickets, a document may take its text from TEXTS
+(text_file) or be a generated PDF (pdf). A task may carry its search keywords ("keywords", the curated layer) and a
+note of its chatter may carry the keywords it gives the task, as a session note does: (who, days ago, text,
+[keywords]).
+
+SOURCES (optional; the hub needs texo_sources, else it is skipped with a notice): the external sources as the press
+review writes them, the channels the organisation follows and one active card per clipping, written by the lead:
+{"where": "project:<name>" (the project the channels serve; missing: the whole organisation), "themes": [the
+labels of kind theme], "channels": [{"name", "kind", "website", "territory", "note", "look_for", "every_days"}],
+"cards": [{"key", "channel", "url", "title", "kind", "published_on" (a day), "event_date", "abstract", "quotes",
+"persons", "bodies", "places", "themes", "acts", "keywords", "stance", "relevance", "related": [keys]}]}. A card
+that names persons is approved by the lead, as a lead would after reading it; the quotes are not checked against
+the pages (the demo stays offline). Channels are found by name, cards by link, labels by kind and name.
 
 Imported by the tests, the module only exposes the helpers and seed(): nothing runs without `env`.
 """
@@ -126,6 +136,34 @@ def pack_lessons(lessons, tags, limit=5):
     return [lesson_id for overlap, lesson_id in sorted((s for s in shared if s[0]), key=lambda s: (-s[0], -s[1]))[:limit]]
 
 
+def published_at(day):
+    """The datetime of a card published on a day (noon, so every time zone reads the same day); none, False."""
+    return f"{day} 12:00:00" if day else False
+
+
+def card_values(card, channel_id, labels):
+    """The values of a card of the external sources from its entry in SOURCES: the channel, the labels through
+    `labels(names, kind)` (the ids of the labels of that kind, created when new), the dates and the defaults
+    (article, medium relevance), as the press review writes them with sources_card."""
+    return {"channel_id": channel_id, "url": card["url"], "title": card["title"], "kind": card.get("kind") or "article",
+            "published_on": published_at(card.get("published_on")), "event_date": card.get("event_date") or False,
+            "abstract": card["abstract"], "quotes": card.get("quotes") or False, "acts": card.get("acts") or False,
+            "keywords": card.get("keywords") or False, "stance": card.get("stance") or False,
+            "relevance": str(card.get("relevance") or "2"), "triage_note": False,
+            "person_ids": [(6, 0, labels(card.get("persons"), "person"))],
+            "body_ids": [(6, 0, labels(card.get("bodies"), "body"))],
+            "place_ids": [(6, 0, labels(card.get("places"), "place"))],
+            "theme_ids": [(6, 0, labels(card.get("themes"), "theme"))]}
+
+
+def related_cards(cards):
+    """{key: [the keys of the related cards that exist]} of the cards of SOURCES: a key that names no card is
+    left out, a card is never related to itself."""
+    keys = {card["key"] for card in cards}
+    return {card["key"]: [key for key in dict.fromkeys(card.get("related") or []) if key in keys and key != card["key"]]
+            for card in cards}
+
+
 def _xid(env, xmlid):
     return env.ref(xmlid).id
 
@@ -142,6 +180,7 @@ class Seeder:
         self.notes = {}      # (kind, name) -> id
         self.documents = {}  # key -> id
         self.lessons = []    # [(data, id)]
+        self.project_of = {}  # name -> project, of the organisation and of its customers (the anchor of SOURCES)
         self.summary = {"projects": [], "rules": 0, "tasks": 0, "tickets": 0, "lessons": 0, "documents": 0}
 
     # -- helpers ---------------------------------------------------------------------------------------------
@@ -409,6 +448,7 @@ class Seeder:
             self.updates(project, spec["updates"])
             projects[spec["name"]] = project
             self.summary["projects"].append({"project": project.id, "tasks": len(spec["tasks"])})
+        self.project_of.update(projects)
         return projects, tasks
 
     def customer(self, item, eval_set):
@@ -427,6 +467,7 @@ class Seeder:
                 tasks[(spec["name"], task_item["name"])] = task
             update = self.updates(project, spec["updates"])
             projects[spec["name"]] = project
+            self.project_of[spec["name"]] = project
             self.summary["projects"].append({"project": project.id, "tasks": len(spec["tasks"])})
             if firsts is None:
                 first = spec["tasks"][0]
@@ -469,6 +510,70 @@ class Seeder:
                     activities=item.get("activities"), keywords=item.get("keywords"))["id"])
                 self.summary["lessons"] += 1
             self.lessons.append((item, lesson.id))
+
+    def sources(self):
+        """The external sources of the demo (SOURCES, where the hub has texo_sources): the channels, the labels
+        and one active card per clipping, written by the lead; a card that names persons is approved by the lead.
+        The chatter of the cards stays quiet (no log of the creation, no tracking): the demo is loaded, not
+        triaged. Found by name (channels), by kind and name (labels), by link (cards); the related cards are
+        linked once every card exists."""
+        sources = getattr(data, "SOURCES", None)
+        if not sources:
+            return
+        if "memory.source.item" not in self.env:
+            print("[info] the data have SOURCES but the hub has no texo_sources: the external sources are skipped")
+            self.summary["sources"] = "skipped"
+            return
+        lead = self.users["lead"]
+        quiet = dict(mail_create_nolog=True, mail_notrack=True, tracking_disable=True, active_test=False)
+        Tag = self.env["memory.source.tag"].with_user(lead).with_context(**quiet)
+        Channel = self.env["memory.source.channel"].with_user(lead).with_context(**quiet)
+        Item = self.env["memory.source.item"].with_user(lead).with_context(**quiet)
+        company = Tag.env.company
+        tags = {}
+
+        def labels(names, kind):
+            ids = []
+            for name in names or []:
+                if (kind, name) not in tags:
+                    tags[(kind, name)] = Tag.search([("company_id", "=", company.id), ("kind", "=", kind),
+                                                     ("name", "=", name)], limit=1) or Tag.create({"name": name, "kind": kind})
+                ids.append(tags[(kind, name)].id)
+            return ids
+
+        labels(sources.get("themes"), "theme")
+        project = self.project_of[sources["where"].partition(":")[2]] if sources.get("where") else None
+        channels = {}
+        for item in sources.get("channels") or []:
+            vals = {"name": item["name"], "kind": item.get("kind") or "press", "website": item.get("website") or False,
+                    "territory": item.get("territory") or False, "note": item.get("note") or False,
+                    "watch_terms": item.get("look_for") or False, "frequency_days": int(item.get("every_days") or 1),
+                    "project_id": project.id if project else False}
+            channel = Channel.search([("company_id", "=", company.id), ("name", "=", item["name"])], limit=1)
+            if channel:
+                channel.write(vals)
+            else:
+                channel = Channel.create(vals)
+            channels[item["name"]] = channel
+        cards = {}
+        for card in sources.get("cards") or []:
+            vals = card_values(card, channels[card["channel"]].id, labels)
+            item = Item.search([("company_id", "=", company.id), ("url", "=", card["url"])], limit=1)
+            if item:
+                item.write(vals)
+            else:
+                item = Item.create(vals)
+            named = bool(card.get("persons"))
+            state = {"state": "active"}
+            if named and not item.approved_on:
+                state.update({"approved_by_id": lead.id, "approved_on": self.now})
+            elif not named:
+                state.update({"approved_by_id": False, "approved_on": False})
+            item.write(state)
+            cards[card["key"]] = item
+        for key, related in related_cards(sources.get("cards") or []).items():
+            cards[key].write({"related_ids": [(6, 0, [cards[k].id for k in related])]})
+        self.summary["sources"] = {"channels": len(channels), "cards": len(cards), "labels": len(tags)}
 
     def questions(self, eval_set):
         """The question set with the ids of this database: the pack questions get their lessons, the search
@@ -520,7 +625,13 @@ class Seeder:
                   "vectors within fifteen minutes of its start")
             self.summary["vectors"] = "left to the cron"
             return
-        self.summary["vectors"] = Embedding._cron_embed()
+        outcome = Embedding._cron_embed()
+        rounds = 1
+        while outcome.get("pending") and rounds < 20:
+            # a demo with long documents has more chunks than one run computes: the next runs take the rest
+            outcome = Embedding._cron_embed()
+            rounds += 1
+        self.summary["vectors"] = outcome
 
     def tokens(self):
         Keys = self.env["res.users.apikeys"]
@@ -551,6 +662,7 @@ def seed(env):
     for customer in data.CUSTOMERS:
         seeder.customer(customer, eval_set)
     seeder.findings()
+    seeder.sources()
     eval_set = seeder.questions(eval_set)
     seeder.vectors()
     tokens = seeder.tokens()
