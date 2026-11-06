@@ -1,2 +1,2 @@
 """Texo: workspace and memory for AI agents at work. The core: the CLI texo and the drivers of the threads."""
-__version__ = "2.1.1"
+__version__ = "2.2.0"
