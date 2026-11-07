@@ -38,11 +38,17 @@ them, of the lessons of the pack, with how many lessons a pack carries on averag
 the task concepts) instead of JSON; --format both reads them both ways, reports each and
 the size of a pack in the two (characters, and tokens at about four characters each), as
 an agent receives them from MCP.
+
+After the search questions a line says how the searches ran: the mean and the 95th percentile of the
+latency the hub measured, and what the reranker did. The titles of the expected documents and cards are
+resolved with the words only, whatever the search under measure; the rate limit of the hub waits and
+retries, since a set asks more than a person does in a minute.
 """
 import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -55,6 +61,25 @@ KINDS = ("lesson", "note", "fact", "procedure", "document", "task", "source")
 RESOLVE = {"lesson": ("memory.lesson", []), "note": ("memory.note", [["kind", "=", "rule"]]),
            "fact": ("memory.note", [["kind", "=", "fact"]]), "procedure": ("memory.note", [["kind", "=", "procedure"]]),
            "task": ("project.task", [])}
+
+
+class Patient:
+    """The hub for a measure: the rate limit of the hub (429, texo.rate_limit_per_minute) waits and retries,
+    since a set of a few hundred questions asks more than a person does in a minute; any other error, or a
+    limit that does not lift after the tries, stops the measure as before."""
+
+    def __init__(self, hub, wait=10, tries=30, sleep=time.sleep):
+        self.hub, self.wait, self.tries, self.sleep = hub, wait, tries, sleep
+
+    def call(self, route, payload=None):
+        for attempt in range(self.tries):
+            try:
+                return self.hub.call(route, payload)
+            except ctx.HubError as error:
+                if error.status != 429 or attempt == self.tries - 1:
+                    raise
+                self.sleep(self.wait)
+        return None
 
 
 def load_questions(path):
@@ -75,7 +100,9 @@ def resolve(hub, questions):
 
 def _resolve_title(hub, kind, title):
     if kind in ("document", "source"):
-        found = [r for r in hub.call("memory/search", {"query": title, "scope": kind + "s", "limit": 5})["results"]
+        # by the words only: the search under measure (vectors, reranker) must not decide what is expected
+        found = [r for r in hub.call("memory/search", {"query": title, "scope": kind + "s", "limit": 5,
+                                                       "mode": "lexical"})["results"]
                  if r.get("title") == title]
     else:
         model, domain = RESOLVE[kind]
@@ -102,16 +129,20 @@ def expected_keys(question):
     return keys
 
 
-def evaluate(hub, questions, k=5, mode=None):
+def evaluate(hub, questions, k=5, mode=None, runs=None):
     """[(question, rank or None)] where rank is 1-based of the first expected hit; mode (lexical,
-    semantic, hybrid) asks the hub for one mode of the search, None for the configured one."""
+    semantic, hybrid) asks the hub for one mode of the search, None for the configured one. runs, a list,
+    gets for each search how it ran: (latency in ms, what the reranker did), as the hub says it."""
     outcome = []
     for question in questions:
         if "task_id" in question:
             continue
-        results = ctx.op_search(hub, {"query": question["query"], "related_terms": question.get("related_terms"),
-                                      "scope": question.get("scope") or "all", "applies_to": question.get("applies_to"),
-                                      "limit": k, "mode": mode})["results"]
+        answer = ctx.op_search(hub, {"query": question["query"], "related_terms": question.get("related_terms"),
+                                     "scope": question.get("scope") or "all", "applies_to": question.get("applies_to"),
+                                     "limit": k, "mode": mode})
+        results = answer["results"]
+        if runs is not None:
+            runs.append((answer.get("latency_ms"), answer.get("rerank")))
         wanted = expected_keys(question)
         rank = next((i + 1 for i, r in enumerate(results) if key_of(r) in wanted), None)
         outcome.append((question, rank))
@@ -224,6 +255,26 @@ def _measure(outcome):
     return total, hits, mrr
 
 
+def report_runs(runs, out=sys.stdout):
+    """How the searches ran: the mean and the 95th percentile of the latency the hub measured, and how many
+    times the reranker was applied, skipped, off or unavailable (a hub before 20.0.1.3.0 says neither)."""
+    latencies = sorted(ms for ms, _ in runs if ms is not None)
+    states = {}
+    for _, state in runs:
+        if state:
+            states[state] = states.get(state, 0) + 1
+    if not latencies and not states:
+        return None
+    parts = []
+    if latencies:
+        p95 = latencies[min(len(latencies) - 1, round(0.95 * (len(latencies) - 1)))]
+        parts.append(f"latency: mean {sum(latencies) / len(latencies):.0f} ms  p95 {p95} ms")
+    if states:
+        parts.append("rerank: " + ", ".join(f"{state} {count}" for state, count in sorted(states.items())))
+    out.write("  ".join(parts) + "\n")
+    return latencies, states
+
+
 def report(outcome, k, out=sys.stdout):
     """The overall numbers, then one line per scope and class when the set has classes, then the misses with
     their scope and class."""
@@ -254,12 +305,14 @@ def main(argv=None, out=sys.stdout, err=sys.stderr):
     args = parser.parse_args(argv)
     try:
         questions = load_questions(args.questions)
-        hub = ctx.Hub(*hub_settings())
+        hub = Patient(ctx.Hub(*hub_settings()))
         resolve(hub, questions)
         if any("task_id" not in q for q in questions):
             if args.mode:
                 out.write(f"-- search mode {args.mode}\n")
-            report(evaluate(hub, questions, args.k, args.mode), args.k, out)
+            runs = []
+            report(evaluate(hub, questions, args.k, args.mode, runs), args.k, out)
+            report_runs(runs, out)
         if any("task_id" in q for q in questions):
             formats = ("json", "okf") if args.format == "both" else (args.format,)
             by_format = {}
