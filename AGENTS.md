@@ -6,12 +6,14 @@ il core (`texo where`). Questo file dice i tuoi limiti: che cosa fai sempre e ch
 
 ## All'apertura della cartella
 
-`texo mount` scrive accanto a questo file altri tre file: leggili prima di lavorare, se il tuo assistente non li
+`texo mount` scrive accanto a questo file altri due file: leggili prima di lavorare, se il tuo assistente non li
 carica da sé.
 
-- `ARCHITECTURE.md`: dove lavori. Il core, i pacchetti, il hub e la sua memoria, i fili, e questa cartella.
+- `ARCHITECTURE.md`: dove lavori. Il core, i pacchetti, il hub e la sua memoria, i fili, questa cartella e le
+  cartelle delle sue skill.
 - `DESIGN.md`: come scrivi. Alla persona, nella memoria, nelle regole e nelle skill; lo stile dei pacchetti.
-- `SKILLS.md`: quale skill usare per il compito che hai davanti.
+
+Ogni skill è una cartella con il suo `SKILL.md`: la sua descrizione dice quando usarla.
 
 ## Precedenza
 
@@ -22,6 +24,11 @@ fatto non sta mai in due posti.
 
 ## La memoria
 
+- Comincia un task con la skill `texo-sessione`: ruolo, pacchetto di contesto, regole, fili, ricerca, e alla
+  fine la nota sul task, le ore che dà la persona, l'aggiornamento del progetto e le lezioni. Se in
+  `.texo/proposals/` c'è una proposta di nota (la scrive l'hook della cartella dalla trascrizione della
+  sessione, con i segreti oscurati), parti da quella: proponila alla persona, scrivila dopo il suo sì, poi
+  cancella il file.
 - Le regole del hub ti vincolano. Se il hub non risponde, dillo e non scrivere nulla nella memoria.
 - Non si scrive nulla senza il sì della persona, con lo stato che il tuo ruolo permette; non cancellare mai:
   una nota nuova supera la vecchia.
@@ -41,7 +48,8 @@ fatto non sta mai in due posti.
 ## Skill
 
 - Non modificare mai una skill durante un task: cambia con un commit rivisto nel suo repository.
-- Se il tuo assistente non carica le skill, apri tu lo `SKILL.md` che `SKILLS.md` indica.
+- Se il tuo assistente non carica le skill, apri tu lo `SKILL.md` che corrisponde al compito, nelle cartelle che
+  `ARCHITECTURE.md` indica.
 
 ## Dati dei clienti
 
