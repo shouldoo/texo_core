@@ -328,7 +328,8 @@ remoto del hub, come la persona, con il suo token.
 
 ## Punti aperti
 
-- **Hosting** dell'Odoo di coordinamento oltre la prova in locale: VPS, TLS, backup con prova di ripristino.
+- **Hosting** dell'Odoo di coordinamento oltre la prova in locale: VPS, TLS, backup con prova di ripristino. La
+  topologia e il dimensionamento, tutto su CPU con la GPU facoltativa: `playbooks/profili-memoria.md`, «Hardware».
 - **Memoria esterna** (una cartella cloud, una risorsa del progetto): si collega come filo `connector`
   dell'organizzazione.
 - **Taratura della ricerca semantica** su set di valutazione più grandi, per organizzazione.
