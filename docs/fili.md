@@ -179,6 +179,7 @@ packs/<nome>/
 ├── pack.toml        [pack] name, version, core (il core che richiede), work_dirs; [[thread]]; [[suggested_thread]]
 ├── skills/          le skill del settore, con i loro riferimenti
 ├── seed.toml        attività, sezioni, regole e template di progetto del settore (texo seed)
+├── DESIGN.md        facoltativo: lo stile del settore (come si scrive il suo codice o i suoi testi), in DESIGN.md
 └── demo/            facoltativo: un'organizzazione inventata per i test (setup/load-demo.sh)
 ```
 
@@ -197,7 +198,7 @@ dell'organizzazione nel hub, con l'articolo letto, la data di verifica e una sca
 | Comando | Che cosa fa |
 |---|---|
 | `texo init <hub> <organizzazione>` | scrive `texo.toml` (hub e organizzazione), fa fidare la cartella a Claude Code (e crea il profilo Antigravity se `agy` c'è), poi monta |
-| `texo mount [--yes] [--offline]` | legge la configurazione del hub e vi aggiunge `texo.toml`; installa i pacchetti e ne verifica versione e core richiesto; verifica le dichiarazioni dei fili (con un errore non monta nulla); clona i `git-mirror`; installa i `cli` mancanti solo con `--yes`; scrive la configurazione MCP di Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) e del profilo Antigravity dell'organizzazione se esiste, togliendo i fili rimossi e lasciando ciò che la persona ha aggiunto; collega le skill del core, dei fili con `skills`, dei pacchetti e della cartella (`skills/`) in `.agents/skills/` e `.claude/skills/` (a parità di nome vince la cartella, poi il pacchetto, poi il filo); crea le cartelle di lavoro dei pacchetti (`work_dirs`); scrive `AGENTS.md`, `CLAUDE.md` e `GEMINI.md` se mancano o se li aveva scritti lui; genera `.texo/THREADS.md` e `.texo/threads.json`; aggiunge i file generati al `.gitignore` |
+| `texo mount [--yes] [--offline]` | legge la configurazione del hub e vi aggiunge `texo.toml`; installa i pacchetti e ne verifica versione e core richiesto; verifica le dichiarazioni dei fili (con un errore non monta nulla); clona i `git-mirror`; installa i `cli` mancanti solo con `--yes`; scrive la configurazione MCP di Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) e del profilo Antigravity dell'organizzazione se esiste, togliendo i fili rimossi e lasciando ciò che la persona ha aggiunto; collega le skill del core, dei fili con `skills`, dei pacchetti e della cartella (`skills/`) in `.agents/skills/` e `.claude/skills/` (a parità di nome vince la cartella, poi il pacchetto, poi il filo); crea le cartelle di lavoro dei pacchetti (`work_dirs`); scrive `AGENTS.md` (i limiti), `ARCHITECTURE.md` (dove lavora l'agente, con questa cartella), `DESIGN.md` (come scrive, con lo stile dei pacchetti) e `SKILLS.md` (quale skill per quale compito), e `CLAUDE.md` e `GEMINI.md` che li importano, se mancano o se li aveva scritti lui; genera `.texo/THREADS.md` e `.texo/threads.json`; aggiunge i file generati al `.gitignore` |
 | `texo doctor` | le stesse verifiche della dichiarazione, il token del hub (senza mostrarlo), il hub che risponde, i pacchetti installati e la diagnosi di ogni filo |
 | `texo threads` | i fili montati, con tipo, `data_class`, `writes`, stato e `guide`; è anche lo strumento `threads` del server MCP `memoria` |
 | `texo thread <id> ls\|read\|search ...` | legge una fonte `git-remote` al `ref` fissato |

@@ -58,8 +58,9 @@ What `texo mount` leaves in the folder, outside git:
 
 ```text
 texo.toml                                   the hub and the organisation
-AGENTS.md, CLAUDE.md, GEMINI.md             the rules of the core and the index of the threads (written only
-                                            when absent or written by mount)
+AGENTS.md, ARCHITECTURE.md, DESIGN.md,      the limits, the infrastructure, the style and the skills of the
+SKILLS.md, CLAUDE.md, GEMINI.md             folder; CLAUDE.md and GEMINI.md import them with the index of the
+                                            threads (written only when absent or written by mount)
 .texo/                                      config.json, THREADS.md, threads.json
 .mcp.json, .gemini/settings.json            the MCP servers: memoria and the MCP threads
 .claude/settings.local.json                 the hooks of the proposal of the session note (texo hook)
@@ -113,7 +114,7 @@ Outside a working folder the CLI takes the hub from `TEXO_HUB_URL` and `TEXO_HUB
 
 | Path | What |
 |---|---|
-| `AGENTS.md` | the rules of every agent in a working folder (`texo mount` writes them into the folder) |
+| `AGENTS.md` | the limits of every agent in a working folder (`texo mount` writes them into the folder, with `ARCHITECTURE.md`, `DESIGN.md` and `SKILLS.md` from `setup/templates/cartella/` and the configuration of the organisation) |
 | `texo/` | the CLI: `hub.py` (the memory client and the MCP server), `config.py` (`texo.toml`, the configuration of the hub, credentials), `packs.py`, `threads.py` (drivers), `mount.py`, `seed.py`, `bridge.py`, `setup_assistants.py` |
 | `docs/` | `memoria.md` (the model of the memory), `fili.md` (threads and packs), `ARCHITECTURE.md`, `blueprint.md` |
 | `skills/` | `texo-sessione`, `memoria-consolidamento`, `memoria-ingestione`, `memoria-fonti` |
@@ -123,7 +124,7 @@ Outside a working folder the CLI takes the hub from `TEXO_HUB_URL` and `TEXO_HUB
 
 ## Language
 
-What an agent reads at work is Italian: `AGENTS.md` (written into every working folder), the skills, `docs/`, the
+What an agent reads at work is Italian: `AGENTS.md` and the other files written into every working folder, the skills, `docs/`, the
 playbooks, the files `texo mount` generates and the instructions of the MCP server `memoria` around the rules. The
 descriptions of the MCP tools and the rules every session starts with (`texo_hub`) are English. Code, comments,
 commit messages, pull requests and this README are English. One file, one language.

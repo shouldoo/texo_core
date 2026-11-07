@@ -2,18 +2,18 @@
 
 Regole per QUALSIASI assistente AI (Claude Code, Gemini CLI, Antigravity, Codex, Cursor, …) che lavora in una
 cartella di lavoro di Texo. `texo mount` le scrive nell'`AGENTS.md` della cartella; `<core>` è dove è installato
-il core (`texo where`).
+il core (`texo where`). Questo file dice i tuoi limiti: che cosa fai sempre e che cosa non fai mai.
 
-## La cartella di lavoro
+## All'apertura della cartella
 
-Texo: spazio di lavoro e memoria per agenti AI al lavoro. Lavori per una persona di un'organizzazione, in una
-cartella di lavoro di quell'organizzazione. È fatta di tre parti:
+`texo mount` scrive accanto a questo file altri tre file: leggili prima di lavorare, se il tuo assistente non li
+carica da sé.
 
-| Parte | Dove | Che cosa ti dà |
-|---|---|---|
-| core | `<core>/`, installato una volta per macchina | queste regole, la CLI `texo`, le skill della memoria, `<core>/docs/` |
-| pacchetti di skill | i pacchetti del settore che l'organizzazione installa, dal marketplace | le skill del settore, con i loro riferimenti; il loro seed dà al hub le attività, le regole e i template del settore |
-| hub | l'Odoo di coordinamento, raggiunto come la persona | la memoria (regole, fatti, procedure, documenti, progetti, task, lezioni) e la configurazione dell'organizzazione: i suoi pacchetti e i suoi fili |
+- `ARCHITECTURE.md`: dove lavori. Il core, i pacchetti, il hub e la sua memoria, i fili, e questa cartella.
+- `DESIGN.md`: come scrivi. Alla persona, nella memoria, nelle regole e nelle skill; lo stile dei pacchetti.
+- `SKILLS.md`: quale skill usare per il compito che hai davanti.
+
+## Precedenza
 
 L'organizzazione stessa (chi è, come lavora, a che cosa si conforma, le sue regole) vive nel suo hub, mai in
 git. Precedenza quando due regole non concordano: le regole del core e del hub, poi le regole
@@ -22,29 +22,6 @@ fatto non sta mai in due posti.
 
 ## La memoria
 
-Il hub è sempre montato: il server MCP `memoria` (le sue istruzioni portano le regole della sessione) e le
-stesse operazioni da riga di comando, `texo <command>`. Ogni chiamata gira come la persona, con il suo token:
-ruoli, regole di accesso e audit sono quelli di Odoo. `<core>/docs/memoria.md` dice che cos'è ogni memoria.
-
-| Memoria | Dove | Come |
-|---|---|---|
-| Regole: ciò che un agente deve fare sempre o non fare mai | note di tipo regola sull'organizzazione, su un cliente o su un progetto, attivate da un lead | le istruzioni di `memoria`; il pacchetto di contesto; `texo rules` |
-| Fatti e procedure dell'organizzazione, di un cliente, di un progetto | note di tipo fatto o procedura, in una sezione, con parole chiave, verifica e scadenza | il pacchetto di contesto per titolo; `texo read`, `note`, `note-append`, `note-update` |
-| Il progetto: che cos'è, la sua roadmap, il suo presente | la description, le milestone e l'ultimo update del progetto | `texo context`, `project`, `update` |
-| Il lavoro: richiesta, che cosa è successo, ore | la description e il chatter del task, i suoi timesheet | `texo task`, `task-note`, `log-time` |
-| Lezioni: ciò che un progetto ha imparato, senza il cliente | lezioni del hub, per tag | `texo search`, `lesson` |
-| Documenti | allegati del record a cui appartengono, con il testo convertito | `texo documents`, `document`; `<core>/scripts/ingest.py` |
-| Procedure del settore, eseguite dall'agente | le skill dei pacchetti e della cartella | lette quando il compito corrisponde |
-
-La memoria è nominata come Open Knowledge Format (OKF v0.2): ogni record è un concetto con un tipo e un id
-(`rules/12`, `facts/3`, `projects/2`), il pacchetto di contesto è il suo `index.md`, gli update e il chatter il
-suo `log.md`. Chiedi con `format: okf` (`texo --okf`) per leggerla così.
-
-- Comincia un task con la skill `texo-sessione`: ruolo, pacchetto di contesto, regole, fili, ricerca, e alla
-  fine la nota sul task, le ore che dà la persona, l'aggiornamento del progetto e le lezioni. Se in
-  `.texo/proposals/` c'è una proposta di nota (la scrive l'hook della cartella dalla trascrizione della
-  sessione, con i segreti oscurati), parti da quella: proponila alla persona, scrivila dopo il suo sì, poi
-  cancella il file.
 - Le regole del hub ti vincolano. Se il hub non risponde, dillo e non scrivere nulla nella memoria.
 - Non si scrive nulla senza il sì della persona, con lo stato che il tuo ruolo permette; non cancellare mai:
   una nota nuova supera la vecchia.
@@ -56,11 +33,6 @@ suo `log.md`. Chiedi con `format: okf` (`texo --okf`) per leggerla così.
 
 ## Fili
 
-Fonti, strumenti e connettori montati accanto alla memoria sono *fili*, dichiarati nel hub e montati da
-`texo mount`. Il loro indice è `.texo/THREADS.md` (i file del cliente lo importano) e lo strumento `threads` di
-`memoria`; `<core>/docs/fili.md` li spiega.
-
-- Cita la fonte che hai letto (il filo e il percorso o l'indirizzo), mai ciò che ne ricordi.
 - `data_class` dice che cosa può ricevere un filo: non mandargli mai dati di una classe sopra la sua (public <
   org < customer). Chiedi alla persona prima di qualsiasi cosa che uno strumento o un connettore scrive.
 - Un filo che non risponde: dillo e vai avanti senza; `texo doctor` dice perché.
@@ -68,17 +40,8 @@ Fonti, strumenti e connettori montati accanto alla memoria sono *fili*, dichiara
 
 ## Skill
 
-Le skill del core, dei pacchetti e della cartella sono collegate da `texo mount` dove ogni assistente le cerca.
-Se il tuo assistente non carica le skill, apri tu lo `SKILL.md` corrispondente. Non modificare mai una skill
-durante un task: cambia con un commit rivisto nel suo repository.
-
-- `texo-sessione`: l'inizio e la fine del lavoro su un task o su un progetto.
-- `memoria-consolidamento`: la revisione della memoria, su richiesta o quando `texo review` ha voci.
-- `memoria-ingestione`: i documenti nella memoria.
-- `memoria-fonti`: le fonti esterne che l'organizzazione segue (lettura, triage, schede, domande).
-
-Regole, documentazione e skill sono scritte per qualsiasi assistente: nomina un'azione per ciò che fa (leggere
-un file, eseguire un comando), mai con i nomi degli strumenti, i percorsi o le variabili di un solo assistente.
+- Non modificare mai una skill durante un task: cambia con un commit rivisto nel suo repository.
+- Se il tuo assistente non carica le skill, apri tu lo `SKILL.md` che `SKILLS.md` indica.
 
 ## Dati dei clienti
 
