@@ -20,7 +20,7 @@ ${TEXO_STACK:-~/.local/share/texo/coordinamento}/    fuori da git
 └── backups/                             montato in /mnt/backups, per `odoo db dump`
 ```
 
-Lo stack nasce da `bash "$(texo where)/setup/coordinamento-up.sh"`: clona `texo_hub` al tag `${TEXO_HUB_REF:-20.0.1.7.0}`, genera `odoo.conf` e
+Lo stack nasce da `bash "$(texo where)/setup/coordinamento-up.sh"`: clona `texo_hub` al tag `${TEXO_HUB_REF:-20.0.1.8.0}`, genera `odoo.conf` e
 `pg_password` solo se mancano (senza stamparli), costruisce l'immagine `texo-coordinamento:20.0` (`odoo:20.0`
 più il pacchetto Python `markdown2`, senza il quale il modulo `mail` scrive un WARNING a ogni avvio) e avvia.
 Non tocca mai un database.
