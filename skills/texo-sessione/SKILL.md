@@ -103,7 +103,7 @@ Poi cerca prima di rispondere dalla conoscenza generale, con le parole della per
 query e i sinonimi in `--terms`:
 
 ```bash
-texo search "<words>" --terms <synonyms> [--scope rules|facts|procedures|lessons|documents|tasks] [--show-expired] [--as-of YYYY-MM-DD]
+texo search "<words>" --terms <synonyms> [--scope rules|facts|procedures|lessons|documents|tasks] [--show-expired] [--as-of YYYY-MM-DD] [--max-tokens <n>]
 texo read --note <id> | --lesson <id>
 ```
 
