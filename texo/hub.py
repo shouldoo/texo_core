@@ -135,6 +135,8 @@ def op_context(hub, args):
         payload["company_id"] = args["company_id"]
     if args.get("activity"):
         payload["activity"] = args["activity"]
+    if args.get("max_tokens"):
+        payload["max_tokens"] = args["max_tokens"]
     return hub.call("memory/context", _format(payload, args))
 
 
@@ -149,6 +151,8 @@ def op_search(hub, args):
         payload["show_expired"] = True
     if args.get("as_of"):
         payload["as_of"] = args["as_of"]
+    if args.get("max_tokens"):
+        payload["max_tokens"] = args["max_tokens"]
     return hub.call("memory/search", payload)
 
 
@@ -455,7 +459,9 @@ def render(name, data):
             rows.append(f"{r['id']}  [{tag}]  {r['title']}{found}{where}\n    {r.get('snippet') or ''}")
         # how the search ran (a hub from 20.0.1.1.0 of texo_memory says it): the mode used, the reranker, the time
         if data.get("mode"):
-            rows.append(f"({data['mode']}, rerank {data.get('rerank', 'off')}, {data.get('latency_ms', '?')} ms)")
+            rows.append(f"({data['mode']}, rerank {data.get('rerank', 'off')}, {data.get('latency_ms', '?')} ms"
+                        + (f"; budget {data['budget']['tokens']}/{data['budget']['max_tokens']} tokens, "
+                           f"{data['budget']['skipped']} skipped" if data.get("budget") else "") + ")")
         return "\n".join(rows) or "nothing found"
     if name in ("project", "update"):
         return "\n".join(_project_lines(data if name == "project" else {"now": data}))
@@ -496,6 +502,10 @@ def render(name, data):
             lines.append("draft lessons to review: " + ", ".join(f"{l['id']} {l['title']}" for l in data["pending_lessons"]))
         if data["warnings"]:
             lines.append("warnings: " + ", ".join(_warning(w) for w in data["warnings"]))
+        if data.get("budget"):
+            budget = data["budget"]
+            lines.append(f"budget: {budget['tokens']}/{budget['max_tokens']} tokens; cut: "
+                         + (", ".join(budget["trimmed"]) or "nothing"))
         if data["lessons"]:
             lines.append("lessons:")
             lines += [f"  - {l['id']} {l['title']}" + (f"  [{', '.join(l['tags'])}]" if l.get("tags") else "")
@@ -640,12 +650,14 @@ def tool_schemas():
                          "required": ["task_id", "body", "confirm"]}},
         {"name": "context", "description": "The context pack of a task or project: the task with its description, milestone and latest messages; the project with its description, milestones (the roadmap) and last update (now: its present); the chain with the active rules of each level (the text of a prohibition or an obligation, the title of a preference: read it with read), its facts and procedures by title and its documents; draft rules, warnings (now_missing, now_stale, stale rules) and the lessons that share a tag with the task or its project, by title. Read it before touching code. With neither, the pack of the organisation itself (the company, or company_id), by section. Pass the activity of the session (e.g. code, deploy, data, communication, analysis, migration; several comma-separated) to get only the rules that concern it. With format okf, the pack as an Open Knowledge Format bundle: index.md (every level with its rules, facts, procedures and documents by title and one line, the lessons, the pending items, the warnings), the task and the project as concepts, the binding rules in full (a short one is whole in its index line), log.md (the latest updates of the project, the chatter of the task); read the rest with read and its concept id.",
          "inputSchema": {"type": "object", "properties": {"task_id": integer, "project_id": integer, "company_id": integer, "messages": integer,
-                                                          "activity": string, "format": okf}}},
+                                                          "activity": string, "format": okf,
+                                                          "max_tokens": {"type": "integer", "description": "cut the pack to about this many tokens: the messages of the task, the outlines, the lessons, the texts of the project, then the texts of the rules (never a rule); the pack says what was cut (budget)"}}}},
         {"name": "search", "description": "Search the rules, facts and procedures I may read, the documents of the memory (title, summary, keywords and text) and the lessons of every project. Put the person's words in query and synonyms, translations and other names in related_terms; search again with other words when the results miss. Scope tasks searches the episodes instead: title, description and chatter of the tasks I may read (has something like this happened before?), not part of all. Scope sources searches the active cards of the external sources (where the module is installed; also in all): title, public persons, bodies, places, themes, acts, abstract; for a period, a person or a channel use sources_find. mode: lexical (the words), semantic (the meaning, where the hub has vectors: episodes, facts, procedures, lessons, documents, cards; never the rules) or hybrid (both, the default where the vectors are); a hit says which found it (match). A document names the passage that answered (passage: path such as «Art. 43 > comma 2», start) and up to two more to read (passages): read the text from start with document (text, offset), the next passage when the first does not answer, and cite the path. show_expired: the expired notes and lessons too (each says stale expired), for a review. The answer says how the search ran: mode (the one used: lexical when the vectors did not answer), rerank (off, skipped, applied, unavailable), latency_ms.",
          "inputSchema": {"type": "object", "properties": {"query": string, "related_terms": {"type": "array", "items": string},
                                                           "scope": {"type": "string", "enum": list(SCOPES)}, "applies_to": string, "limit": integer,
                                                           "mode": {"type": "string", "enum": list(MODES)}, "show_expired": {"type": "boolean"},
-                                                          "as_of": {"type": "string", "description": "YYYY-MM-DD: the facts and procedures that held on that day (started, not yet expired, not yet superseded), superseded ones included"}},
+                                                          "as_of": {"type": "string", "description": "YYYY-MM-DD: the facts and procedures that held on that day (started, not yet expired, not yet superseded), superseded ones included"},
+                                                          "max_tokens": {"type": "integer", "description": "the results that fit in about this many tokens, an entry too long skipped for the next, never none"}},
                          "required": ["query"]}},
         {"name": "read", "description": "One note (note_id: a rule, a fact with the version to name in note_update, a procedure) or lesson in full; or any concept of the memory by its OKF id (concept: rules/12, facts/3, procedures/8, lessons/5, documents/9, projects/2, tasks/7; with the external sources, sources/12 for a card). With format okf, as an OKF concept: frontmatter (type, status, generated, verified, stale_after, sources) and body.",
          "inputSchema": {"type": "object", "properties": {"note_id": integer, "fact_id": integer, "lesson_id": integer, "concept": string,
@@ -873,12 +885,14 @@ def build_parser(extend=None):
     p.add_argument("--task", dest="task_id", type=int); p.add_argument("--project", dest="project_id", type=int)
     p.add_argument("--company", dest="company_id", type=int, help="another of my companies"); p.add_argument("--messages", type=int)
     p.add_argument("--activity", help="the activity of the session (e.g. code); only the rules that concern it")
+    p.add_argument("--max-tokens", dest="max_tokens", type=int, help="cut the pack to about this many tokens (never a rule)")
     p = sub.add_parser("search"); p.add_argument("query"); p.add_argument("--terms", dest="related_terms", nargs="*")
     p.add_argument("--scope", choices=SCOPES); p.add_argument("--applies-to", dest="applies_to"); p.add_argument("--limit", type=int)
     p.add_argument("--mode", choices=MODES, help="the words, the vectors, or both fused (where the hub has texo_vector)")
     p.add_argument("--show-expired", dest="show_expired", action="store_true",
                    help="the expired notes and lessons too, each marked stale: for a review")
     p.add_argument("--as-of", dest="as_of", help="YYYY-MM-DD: the facts and procedures that held on that day")
+    p.add_argument("--max-tokens", dest="max_tokens", type=int, help="the results that fit in about this many tokens")
     p = sub.add_parser("read"); p.add_argument("--note", dest="note_id", type=int); p.add_argument("--lesson", dest="lesson_id", type=int)
     p.add_argument("--fact", dest="fact_id", type=int, help="a fact: a note id, as --note")
     p.add_argument("--concept", help="an OKF concept id: rules/12, facts/3, lessons/5, documents/9, projects/2, tasks/7, sources/12")
