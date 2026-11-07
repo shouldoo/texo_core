@@ -18,7 +18,7 @@ from pathlib import Path
 POINTERS = ("CLAUDE.md", "GEMINI.md")
 POINTER_MAX_LINES = 8
 PORTABLE_KEYS = {"name", "description"}
-SCANNED = ("AGENTS.md", "skills", "docs", "playbooks", "conventions", "reference", "knowledge")
+SCANNED = ("AGENTS.md", "skills", "docs", "playbooks", "conventions", "reference", "knowledge", "setup/templates/cartella")
 ASSISTANT_SPECIFIC = [
     (re.compile(r"`(Read|Write|Edit|MultiEdit|Bash|Grep|Glob|TodoWrite|AskUserQuestion|WebFetch|WebSearch|"
                 r"NotebookEdit|SlashCommand)`"), "tool name of one assistant"),

@@ -109,6 +109,10 @@ class FakeHub:
         return []
 
 
+PROOFING = ("---\nname: proofing\ndescription: >-\n  The rising of the dough, from the mix to the oven. Use it when a batch\n"
+            "  does not rise. Triggers: \"lievitazione\".\n---\n\n# proofing\n")
+
+
 class FabricCase(unittest.TestCase):
 
     def setUp(self):
@@ -125,7 +129,8 @@ class FabricCase(unittest.TestCase):
                                  "big/file.txt": "not wanted"}, "v1")
         self.marketplace = self.tmp / "marketplace"
         repository(self.marketplace, {"packs/bakery/pack.toml": PACK, "packs/bakery/seed.toml": SEED,
-                                      "packs/bakery/skills/proofing/SKILL.md": "---\nname: proofing\ndescription: d\n---\n",
+                                      "packs/bakery/skills/proofing/SKILL.md": PROOFING,
+                                      "packs/bakery/DESIGN.md": "# Stile del pacchetto\n\n- Le ricette in grammi.\n",
                                       "packs/other/pack.toml": "[pack]\nname = 'other'\n"}, "bakery-v1.2.0")
         self.root = self.tmp / "acme"
         self.root.mkdir()
@@ -246,13 +251,39 @@ class TestMount(FabricCase):
         for base in mount.SKILL_DIRS:
             self.assertTrue((self.root / base / "proofing" / "SKILL.md").is_file())
             self.assertTrue((self.root / base / "texo-sessione").exists() or not (CORE / "skills").is_dir())
-        agents = (self.root / "AGENTS.md").read_text()
-        self.assertIn(mount.GENERATED, agents)
-        self.assertIn("Pacchetti: bakery v1.2.0", agents)
-        self.assertNotIn("<core>", agents)
-        self.assertIn("@AGENTS.md", (self.root / "CLAUDE.md").read_text())
+        files = {name: (self.root / name).read_text() for name in mount.AGENT_FILES}
+        for name, text in files.items():
+            self.assertIn(mount.GENERATED, text, name)
+            self.assertNotIn("<core>", text, name)
+        self.assertIn("## All'apertura della cartella", files["AGENTS.md"], "the limits say what to read first")
+        self.assertNotIn("## La cartella di lavoro", files["AGENTS.md"], "the infrastructure is in ARCHITECTURE.md")
+        self.assertIn("- Pacchetti: `bakery` v1.2.0.", files["ARCHITECTURE.md"])
+        self.assertIn("- Organizzazione: `acme`", files["ARCHITECTURE.md"])
+        self.assertIn("| `proofing` | pacchetto bakery | The rising of the dough, from the mix to the oven. |"
+                      " `.agents/skills/proofing/SKILL.md` |", files["SKILLS.md"])
+        design = files["DESIGN.md"]
+        self.assertIn("### Pacchetto `bakery`\n\n- Le ricette in grammi.", design)
+        self.assertLess(design.index("## Lo stile dei pacchetti"), design.index("## Lo stile dell'organizzazione"))
+        self.assertNotIn("# Stile del pacchetto", design, "the title of the pack's file is the section")
+        pointer = (self.root / "CLAUDE.md").read_text()
+        self.assertEqual([line for line in pointer.splitlines() if line.startswith("@")],
+                         ["@AGENTS.md", "@ARCHITECTURE.md", "@DESIGN.md", "@SKILLS.md", "@.texo/THREADS.md"])
+        self.assertEqual(pointer, (self.root / "GEMINI.md").read_text())
         ignored = (self.root / ".gitignore").read_text().splitlines()
-        self.assertTrue({"recipes/", "AGENTS.md", ".texo/", ".claude/settings.local.json"} <= set(ignored))
+        self.assertTrue({"recipes/", "AGENTS.md", "ARCHITECTURE.md", "DESIGN.md", "SKILLS.md", ".texo/",
+                         ".claude/settings.local.json"} <= set(ignored))
+
+    def test_the_summary_of_a_skill_is_the_first_sentence_of_its_description(self):
+        skill = self.tmp / "SKILL.md"
+        skill.write_text(PROOFING)
+        self.assertEqual(mount.skill_summary(skill), "The rising of the dough, from the mix to the oven.")
+        skill.write_text("---\nname: x\ndescription: 'One line only'\n---\n")
+        self.assertEqual(mount.skill_summary(skill), "One line only")
+        skill.write_text("---\nname: x\ndescription: " + "word " * 60 + "\n---\n")
+        self.assertEqual(len(mount.skill_summary(skill)), 150)
+        self.assertEqual(mount.skill_summary(self.tmp / "missing.md"), "")
+        skill.write_text("no frontmatter")
+        self.assertEqual(mount.skill_summary(skill), "")
 
     def test_a_pack_under_development_is_used_from_its_folder(self):
         local = self.tmp / "dev-marketplace" / "packs" / "bakery"
@@ -299,6 +330,7 @@ guide = "The guides of the sector."
         self.assertIn("[ok] guides: cloned v1", out)
         for base in mount.SKILL_DIRS:
             self.assertTrue((self.root / base / "upstream-guide" / "SKILL.md").is_file(), "its skills are linked")
+        self.assertIn("| `upstream-guide` | filo ", (self.root / "SKILLS.md").read_text(), "and listed with their thread")
         guides = next(t for t in self.fabric().threads if t["id"] == "guides")
         self.assertEqual(guides["origin"], "pack bakery")
         config = json.loads(json.dumps(REMOTE))
