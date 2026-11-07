@@ -83,6 +83,7 @@ class EvalMemoriaTest(unittest.TestCase):
 class ResolveHub:
     def call(self, route, payload):
         if route == "memory/search":
+            assert payload["mode"] == "lexical", "the search under measure must not decide what is expected"
             if payload["scope"] == "sources":
                 return {"results": [{"id": 21, "title": "Terni, crisi in Comune", "source": True}]}
             assert payload["scope"] == "documents"
@@ -118,6 +119,52 @@ class ResolveTest(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             json.dump({"_comment": "x", "questions": [{"query": "q", "expected": []}]}, handle)
         self.assertEqual(ev.load_questions(handle.name), [{"query": "q", "expected": []}])
+
+
+class RunsHub(FakeHub):
+    def call(self, route, payload):
+        answer = super().call(route, payload)
+        return dict(answer, latency_ms=10 * len(self.payloads), rerank="applied" if len(self.payloads) % 2 else "skipped")
+
+
+class RunsTest(unittest.TestCase):
+    def test_how_the_searches_ran(self):
+        runs = []
+        ev.evaluate(RunsHub(), QUESTIONS, k=5, runs=runs)
+        self.assertEqual(runs, [(10, "applied"), (20, "skipped"), (30, "applied")])
+        out = io.StringIO()
+        ev.report_runs(runs, out)
+        self.assertEqual(out.getvalue(), "latency: mean 20 ms  p95 30 ms  rerank: applied 2, skipped 1\n")
+        out = io.StringIO()
+        self.assertIsNone(ev.report_runs([(None, None)], out), "an older hub says neither: no line")
+        self.assertEqual(out.getvalue(), "")
+
+
+class LimitedHub:
+    def __init__(self, refusals, status=429):
+        self.refusals, self.status, self.calls = refusals, status, 0
+
+    def call(self, route, payload=None):
+        self.calls += 1
+        if self.calls <= self.refusals:
+            raise ev.ctx.HubError(self.status, "too many")
+        return {"results": []}
+
+
+class PatientTest(unittest.TestCase):
+    def test_the_rate_limit_waits_and_retries(self):
+        waits = []
+        hub = ev.Patient(LimitedHub(2), wait=7, sleep=waits.append)
+        self.assertEqual(hub.call("memory/search", {}), {"results": []})
+        self.assertEqual(waits, [7, 7])
+
+    def test_any_other_error_or_a_limit_that_holds_stops(self):
+        with self.assertRaises(ev.ctx.HubError):
+            ev.Patient(LimitedHub(1, status=403), sleep=lambda s: None).call("memory/search", {})
+        limited = LimitedHub(5)
+        with self.assertRaises(ev.ctx.HubError):
+            ev.Patient(limited, tries=3, sleep=lambda s: None).call("memory/search", {})
+        self.assertEqual(limited.calls, 3)
 
 
 class FakePackHub:

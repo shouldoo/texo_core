@@ -66,6 +66,7 @@ python3 "$(texo where)/scripts/eval_memoria.py" eval/<set>.json --k 5   # dalla 
 #   facts/paraphrase: 14  hit@5: 4/14  mrr: 0.25
 #   tasks/paraphrase: 20  hit@5: 17/20  mrr: 0.56
 # MISS  [facts/paraphrase]  <le domande senza risposta tra le prime 5, con scope e classe>
+# latency: mean 88 ms  p95 149 ms  rerank: off 236    come sono andate le ricerche, misurate dal hub
 # packs: 4  now: 4/4  milestone: 3/3  rules precision: 1.00  recall: 0.88
 ```
 
@@ -87,7 +88,16 @@ python3 "$(texo where)/scripts/eval_memoria.py" eval/<set>.json --k 5   # dalla 
   contro i guadagni sullo stesso set, mai da solo. Il semantico dice quanto i vettori da soli valgono sulla
   classe parafrasata. Dopo un cambio di modello di embedding i vettori si ricalcolano (cron del modulo) prima
   di misurare.
-- Le parole chiave aggiunte nella revisione si misurano allo stesso modo: i MISS che restano dopo sono di
+- La riga `latency` dice la latenza che il hub ha misurato (media e 95° percentile) e che cosa ha fatto il
+  reranker: si legge insieme a hit e mrr, perché un guadagno di qualità si paga in tempo. Il reranker agisce
+  solo sull'ibrido (negli altri modi è `skipped`), e due set misurati insieme sullo stesso servizio si
+  contendono la GPU: la latenza vera si misura con un set alla volta.
+- Lo script aspetta e riprova quando il hub risponde che le richieste al minuto sono troppe
+  (`texo.rate_limit_per_minute`), e risolve i titoli attesi dei documenti e delle schede con le sole parole:
+  la ricerca sotto misura non decide che cosa ci si aspetta.
+# MISS  [facts/paraphrase]  <le domande senza risposta tra le prime 5, con scope e classe>
+# latency: mean 88 ms  p95 149 ms  rerank: off 236    come sono andate le ricerche, misurate dal hub
+ i MISS che restano dopo sono di
   solito regole (che arrivano per catena nel pacchetto, non per somiglianza) e fatti semantici.
 - Un secondo set di parafrasi sugli stessi record, in un altro registro, serve a controllare che la fusione
   non sia tarata sul primo: si misura sui due file e la taratura vale solo se regge su entrambi.
