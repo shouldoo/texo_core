@@ -28,7 +28,7 @@ from . import __version__
 
 TIMEOUT = 60
 WRITE_TOOLS = ("task_note", "note", "note_append", "note_update", "fact", "fact_append", "fact_update", "lesson", "update", "state", "log_time",
-               "confirm", "document_write", "document_remove",
+               "confirm", "document_write", "document_remove", "document_convert",
                "sources_collect", "sources_search", "sources_link", "sources_propose", "sources_triage", "sources_card",
                "sources_channel")
 SCOPES = ("all", "rules", "notes", "facts", "procedures", "lessons", "documents", "tasks", "sources")
@@ -282,6 +282,11 @@ def op_document_remove(hub, args):
     return hub.call("document/remove", {"document_id": args["document_id"]})
 
 
+def op_document_convert(hub, args):
+    """The file of an attachment converted by the service of the hub, when an administrator named one."""
+    return hub.call("document/convert", {"document_id": args["document_id"]})
+
+
 def op_document_attachment(hub, args):
     """The file of an attachment the person may read, saved in a folder (never printed):
     the answer carries where it is, its name, type, size and fingerprint."""
@@ -377,6 +382,7 @@ OPERATIONS = {
     "update": op_update, "state": op_state, "log_time": op_log_time,
     "review": op_review, "confirm": op_confirm, "documents": op_documents, "document": op_document,
     "document_write": op_document_write, "document_remove": op_document_remove, "document_attachment": op_document_attachment,
+    "document_convert": op_document_convert,
     "query": op_query,
     "sources_due": op_sources_due, "sources_find": op_sources_find, "sources_inbox": op_sources_inbox,
     "sources_collect": op_sources_collect, "sources_search": op_sources_search, "sources_link": op_sources_link,
@@ -546,6 +552,8 @@ def render(name, data):
         return "\n".join(lines)
     if name == "document_remove":
         return f"{data['id']} {data['title']}: out of the memory"
+    if name == "document_convert":
+        return f"{data['id']} {data['title']}: converted by {data.get('converter')}, {data.get('chars')} characters of text"
     if name == "document_attachment":
         return (f"saved {data['path']}  ({data['name']}, {data.get('mimetype') or '-'}, {data['size']} bytes, "
                 f"sha256 {data['sha256']}{', record ' + data['record']['model'] + ' ' + str(data['record']['id']) if data.get('record') else ''})")
@@ -716,6 +724,8 @@ def tool_schemas():
              "task_id": integer, "project_id": integer, "partner_id": integer, "company_id": integer,
              "read_on": string, "fingerprint": string, "keep_text": {"type": "boolean"}, "text": string, "confirm": confirm},
              "required": ["confirm"]}},
+        {"name": "document_convert", "description": "After the person's yes: convert the file of an attachment of a record with the conversion service of the hub, where an administrator named one (else convert on your machine with ingest.py): the text is kept next to the original, the document is in the memory, read today. A sensitive document (no text kept) is refused.",
+         "inputSchema": {"type": "object", "properties": {"document_id": integer, "confirm": confirm}, "required": ["document_id", "confirm"]}},
         {"name": "document_remove", "description": "Lead only, after the person's yes: take a document out of the memory (what the memory brought in goes; an attachment the people put on the record stays).",
          "inputSchema": {"type": "object", "properties": {"document_id": integer, "confirm": confirm}, "required": ["document_id", "confirm"]}},
         {"name": "document_attachment", "description": "Save the file of an attachment of a record I may read into a local folder (out, else a temporary one), for the local conversion with scripts/ingest.py --attachment; the file itself is never returned here.",
@@ -960,6 +970,8 @@ def build_parser(extend=None):
     p.add_argument("--keywords", nargs="*", help="synonyms, translations and other names: the search finds it by these too")
     p.add_argument("--no-text", dest="no_text", action="store_true", help="sensitive document: keep no text"); p.add_argument("--yes", action="store_true")
     p = sub.add_parser("document-remove", help="lead only: a document out of the memory")
+    p.add_argument("document_id", type=int); p.add_argument("--yes", action="store_true")
+    p = sub.add_parser("document-convert", help="convert the file of an attachment with the conversion service of the hub, when one is named")
     p.add_argument("document_id", type=int); p.add_argument("--yes", action="store_true")
     p = sub.add_parser("document-attachment", help="save the file of an attachment I may read, for the local conversion")
     p.add_argument("attachment_id", type=int); p.add_argument("--out", help="folder where the file is saved (default: a temporary one)")

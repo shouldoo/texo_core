@@ -105,7 +105,7 @@ and an expiry.
 | `mcp` | the MCP server `memoria` over stdio: the rules of the session as instructions, the memory as tools |
 | `run-thread <id>` | started by the assistants: an MCP thread with its credentials, so no token is written in a configuration file |
 | `hook stop\|precompact\|session-end` | called by the hooks of an assistant with its JSON on stdin: reads the transcript of the session and leaves in `.texo/proposals/` the material of the session note (the tasks worked on, what the person asked, the files, the commits, the errors; secrets redacted); at the end of a turn that worked on a task without writing its note it asks the agent, once per session, to propose the note. The hook never writes in the hub: the agent proposes, the person says yes |
-| `whoami`, `rules`, `context`, `search`, `read`, `note`, `lesson`, `task`, `task-note`, `log-time`, `update`, `review`, `documents`, `document-write`, `sources-*`, … | the memory, as the person: every write needs `--yes` after the person agreed |
+| `whoami`, `rules`, `context`, `search`, `read`, `note`, `lesson`, `task`, `task-note`, `log-time`, `update`, `review`, `documents`, `document-write`, `document-convert`, `sources-*`, … | the memory, as the person: every write needs `--yes` after the person agreed |
 
 Outside a working folder the CLI takes the hub from `TEXO_HUB_URL` and `TEXO_HUB_TOKEN`.
 

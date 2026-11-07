@@ -157,6 +157,13 @@ class CtxTest(unittest.TestCase):
         self.assertEqual(ctx.op_whoami(self.hub, {})["login"], "jdoe")
         self.assertEqual(self.odoo.calls[0], ("whoami", {}))
 
+    def test_document_convert_is_a_write_of_the_hub(self):
+        self.assertIn("document_convert", ctx.WRITE_TOOLS)
+        ctx.op_document_convert(self.hub, {"document_id": 9})
+        self.assertEqual(self.odoo.calls[-1], ("document/convert", {"document_id": 9}))
+        self.assertEqual(ctx.render("document_convert", {"id": 9, "title": "Atto", "converter": "docling", "chars": 1200}),
+                         "9 Atto: converted by docling, 1200 characters of text")
+
     def test_an_idempotent_write_says_nothing_was_written(self):
         shown = ctx.render("fact", {"id": 9, "title": "Warehouse", "kind": "fact", "state": "active",
                                     "body": "Two locations.", "existing": True})

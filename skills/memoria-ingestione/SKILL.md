@@ -6,7 +6,10 @@ description: >-
   o una pagina che la persona ha ricevuto o trovato, come file locale, un'intera cartella
   (locale, o una cartella cloud raggiunta con il connettore della sessione) o un allegato
   di un record in Odoo. Converti in locale (`scripts/ingest.py`, Docling o i convertitori
-  leggeri), leggi il testo convertito, proponi il documento (dov'è l'originale, che cosa
+  leggeri) oppure, se il hub ha un servizio di conversione (la risposta di
+  `texo document-convert` dice quando manca), fai convertire al hub un allegato già su un
+  record con `texo document-convert <id> --yes`, dopo il sì della persona; poi leggi il
+  testo convertito, proponi il documento (dov'è l'originale, che cosa
   contiene, quando è stato letto) e ciò che dà (le regole che enuncia, citando il
   documento; le modifiche alla description del progetto, che fa la persona; un
   aggiornamento del progetto quando cambia lo stato del lavoro; lezioni senza il
