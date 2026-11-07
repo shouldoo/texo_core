@@ -88,6 +88,8 @@ python3 "$(texo where)/scripts/eval_memoria.py" eval/<set>.json --k 5   # dalla 
   contro i guadagni sullo stesso set, mai da solo. Il semantico dice quanto i vettori da soli valgono sulla
   classe parafrasata. Dopo un cambio di modello di embedding i vettori si ricalcolano (cron del modulo) prima
   di misurare.
+- La misura di riferimento si fa nella configurazione di chi non ha una GPU: vettori su CPU, riordino spento
+  (`profili-memoria.md`, «Hardware»). La GPU e il riordino si misurano come varianti, sullo stesso set.
 - La riga `latency` dice la latenza che il hub ha misurato (media e 95° percentile) e che cosa ha fatto il
   reranker: si legge insieme a hit e mrr, perché un guadagno di qualità si paga in tempo. Il reranker agisce
   solo sull'ibrido (negli altri modi è `skipped`), e due set misurati insieme sullo stesso servizio si

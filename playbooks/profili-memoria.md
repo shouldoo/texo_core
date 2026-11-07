@@ -14,7 +14,7 @@ un'organizzazione cambia materiale (comincia a seguire la stampa, a lavorare su 
 | Profilo | Moduli del hub | Servizi | Per chi | Che cosa dà |
 |---|---|---|---|---|
 | **P1, parole curate** | `texo`, `texo_project`, `texo_memory`, `texo_timesheet`, `texo_mcp` | Odoo e PostgreSQL | chi scrive e chi cerca usano lo stesso lessico, e l'agente scrive note disciplinate | ricerca per parole su regole, fatti, procedure, documenti (con i passaggi), lezioni, episodi; parole chiave e sintesi curate |
-| **P2, vettori pronti** | P1 + `texo_vector` | + `tei` (bge-m3, circa 4,6 GB di RAM) | il caso incerto: si installa e si misura | come P1, più la ricerca per significato da accendere (`texo_vector.mode`) se la misura la giustifica |
+| **P2, vettori pronti** | P1 + `texo_vector` | + `tei` (bge-m3 su CPU, circa 3-3,5 GB di RAM) | il caso incerto: si installa e si misura | come P1, più la ricerca per significato da accendere (`texo_vector.mode`) se la misura la giustifica |
 | **P3, ibrido con documenti** | come P2, modo `hybrid` | come P2 | distanza di lessico fra chi scrive e chi cerca (tecnici e clienti, testi formali e domande colloquiali), documenti lunghi | parafrasi, domande colloquiali, il passaggio giusto di un documento lungo |
 | **P4, ibrido con fonti esterne** | P3 + `texo_sources` (+ `texo_sources_vector`, che si installa da sé) | come P3 | chi lavora su ciò che pubblicano altri: rassegna stampa, bandi, normativa, video | canali, triage, schede con persone pubbliche, enti, temi e date dell'evento, ricerca per filtri e cronologia |
 | **Riordino (facoltativo, su P2-P4)** | `texo_vector` | `tei-rerank` (profilo Compose `rerank`) o llama.cpp su una GPU | solo dove c'è un acceleratore | il documento giusto più spesso al primo posto; su CPU costa 7-30 s a ricerca: spento |
@@ -39,6 +39,58 @@ ogni profilo. Il demo di un pacchetto porta set e misure di riferimento per il s
 Installazione: i moduli del profilo con `-i` (`coordinamento-locale.md`, «Creare il database», con la lista `M`
 del profilo); `tei` gira nello stack per P2-P4, con `texo_vector.endpoint` = `http://tei:80`; dopo un
 aggiornamento si riavviano **tutti** i processi Odoo e si guarda *Memoria > Configurazione > Stato della ricerca*.
+
+## Hardware: tutto su CPU, la GPU facoltativa
+
+Ogni profilo funziona interamente su **CPU**. Una GPU è un acceleratore facoltativo: rende più rapido lo
+smaltimento dei vettori arretrati e rende praticabile il riordino; nessuna funzione e nessuna ricerca deve
+dipenderne. La misura di riferimento è quindi su CPU (`valutazione-memoria.md`).
+
+### La topologia semplice
+
+- **Un server dell'organizzazione** (di norma una VPS): Odoo con i moduli del profilo, PostgreSQL con
+  `pgvector`, il servizio dei vettori su CPU (P2-P4) e, se si vuole che sia il hub a convertire gli allegati,
+  `docling-serve` su CPU (`texo_memory.convert_endpoint`). I servizi dei vettori e della conversione stanno sulla
+  rete interna del server, raggiunti per nome: dall'esterno si raggiunge solo Odoo, in HTTPS.
+- **La macchina di ogni persona** (anche WSL): il coding agent, `texo` con il server MCP locale e una cartella
+  di lavoro per organizzazione (`texo init`, `texo mount`), che dà configurazione, skill e hook; il sapere resta
+  nel hub. Il token di ciascuno sta fuori dalla cartella (`~/.config/texo/`). Qui si può anche convertire in
+  locale (`scripts/ingest.py`): resta la via per i documenti grandi.
+- **Una GPU, se c'è**, su una macchina raggiunta in rete privata (una VPN: per il hub è rete locale): serve gli
+  arretrati dei vettori e il riordino. Le domande si vettorizzano sul server: se l'endpoint dei vettori punta a
+  una GPU che non risponde, la ricerca scende alle sole parole (sui set dei demo l'mrr va da 0,89 a 0,74).
+
+### I numeri (misura di novembre 2026)
+
+Servizio dei vettori su CPU (`tei`, `BAAI/bge-m3` in float32) con 4 e 2 vCPU, `docling-serve` CPU con 4 vCPU,
+i quattro set dei demo dei pacchetti (689 domande):
+
+| Misura | 4 vCPU | 2 vCPU |
+|---|---|---|
+| vettorizzare una domanda (mediana) | 37 ms | 91 ms |
+| smaltimento a lotti | 8,4 pezzi/s | 4,0 pezzi/s |
+| 50.000 pezzi (20.000 messaggi e 30.000 passaggi) | circa 1,6 ore | circa 3,5 ore |
+| memoria del servizio dei vettori | 2,7-3,4 GB | 2,7 GB |
+| Docling, PDF di testo | circa 0,7 s a pagina, picco 3,7 GB | |
+
+- La **qualità** della ricerca è la stessa con le domande vettorizzate su CPU o su GPU (lo stesso modello dà
+  vettori con similarità coseno almeno 0,9996): un indice costruito su una macchina si interroga dall'altra, e
+  cambiare endpoint con lo stesso modello non ricalcola nulla. Latenza media dell'ibrido 85-90 ms.
+- Il **cron** dei vettori si ferma prima del limite di tempo di una corsa e Odoo lo rilancia subito finché resta
+  lavoro: lo smaltimento è continuo (circa 5,9 pezzi/s effettivi con 4 vCPU).
+- Durante lo smaltimento di un arretrato le ricerche restano corrette ma aspettano dietro i lotti: 240 ms di
+  media e 1,2 s al 95° percentile, contro 85 ms a riposo.
+- Il hub aspetta una conversione per 300 s (`texo_memory.convert_timeout`): a questo ritmo circa 400 pagine.
+
+### Dimensionamento
+
+- **Memoria**: Odoo e PostgreSQL, più circa 3,5 GB per i vettori e fino a 4 GB per Docling mentre converte:
+  16 GB sono comodi; 8 GB bastano senza Docling sul server (conversione sulla macchina della persona).
+- **CPU**: i servizi dei vettori e della conversione con un limite di core (nei container), perché un arretrato o
+  una conversione non tolgano CPU a Odoo; con 4 vCPU in tutto, 2 ciascuno, accettando arretrati più lenti.
+- **Arretrati grandi** (l'archivio di un cliente nuovo, una cartella di documenti): fuori orario.
+- Il **riordino** resta spento senza una GPU: su CPU costa secondi a ricerca.
+- Hosting, TLS e backup del server con prova di ripristino: `docs/memoria.md`, «Punti aperti».
 
 ## Il profilo P4: avvio delle fonti esterne
 
