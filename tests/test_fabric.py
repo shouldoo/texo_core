@@ -259,31 +259,26 @@ class TestMount(FabricCase):
         self.assertNotIn("## La cartella di lavoro", files["AGENTS.md"], "the infrastructure is in ARCHITECTURE.md")
         self.assertIn("- Pacchetti: `bakery` v1.2.0.", files["ARCHITECTURE.md"])
         self.assertIn("- Organizzazione: `acme`", files["ARCHITECTURE.md"])
-        self.assertIn("| `proofing` | pacchetto bakery | The rising of the dough, from the mix to the oven. |"
-                      " `.agents/skills/proofing/SKILL.md` |", files["SKILLS.md"])
+        pack_skills = packs.folder(self.fabric(), {"name": "bakery", "version": "v1.2.0"}) / "skills"
+        self.assertIn(f"- pacchetto bakery: `{pack_skills}/`: `proofing`.", files["ARCHITECTURE.md"],
+                      "the skills by the folder they come from, with its full path")
+        self.assertIn(f"- `{self.root / '.agents/skills'}/`", files["ARCHITECTURE.md"])
+        architecture = files["ARCHITECTURE.md"]
+        self.assertLess(architecture.index("- core: `"), architecture.index("- pacchetto bakery: `"),
+                        "the origins in the order of precedence")
+        self.assertFalse((self.root / "SKILLS.md").exists(), "each skill speaks for itself in its SKILL.md")
+        self.assertIn("- Comincia un task con la skill `texo-sessione`", files["AGENTS.md"])
         design = files["DESIGN.md"]
         self.assertIn("### Pacchetto `bakery`\n\n- Le ricette in grammi.", design)
         self.assertLess(design.index("## Lo stile dei pacchetti"), design.index("## Lo stile dell'organizzazione"))
         self.assertNotIn("# Stile del pacchetto", design, "the title of the pack's file is the section")
         pointer = (self.root / "CLAUDE.md").read_text()
         self.assertEqual([line for line in pointer.splitlines() if line.startswith("@")],
-                         ["@AGENTS.md", "@ARCHITECTURE.md", "@DESIGN.md", "@SKILLS.md", "@.texo/THREADS.md"])
+                         ["@AGENTS.md", "@ARCHITECTURE.md", "@DESIGN.md", "@.texo/THREADS.md"])
         self.assertEqual(pointer, (self.root / "GEMINI.md").read_text())
         ignored = (self.root / ".gitignore").read_text().splitlines()
-        self.assertTrue({"recipes/", "AGENTS.md", "ARCHITECTURE.md", "DESIGN.md", "SKILLS.md", ".texo/",
+        self.assertTrue({"recipes/", "AGENTS.md", "ARCHITECTURE.md", "DESIGN.md", ".texo/",
                          ".claude/settings.local.json"} <= set(ignored))
-
-    def test_the_summary_of_a_skill_is_the_first_sentence_of_its_description(self):
-        skill = self.tmp / "SKILL.md"
-        skill.write_text(PROOFING)
-        self.assertEqual(mount.skill_summary(skill), "The rising of the dough, from the mix to the oven.")
-        skill.write_text("---\nname: x\ndescription: 'One line only'\n---\n")
-        self.assertEqual(mount.skill_summary(skill), "One line only")
-        skill.write_text("---\nname: x\ndescription: " + "word " * 60 + "\n---\n")
-        self.assertEqual(len(mount.skill_summary(skill)), 150)
-        self.assertEqual(mount.skill_summary(self.tmp / "missing.md"), "")
-        skill.write_text("no frontmatter")
-        self.assertEqual(mount.skill_summary(skill), "")
 
     def test_a_pack_under_development_is_used_from_its_folder(self):
         local = self.tmp / "dev-marketplace" / "packs" / "bakery"
@@ -330,7 +325,7 @@ guide = "The guides of the sector."
         self.assertIn("[ok] guides: cloned v1", out)
         for base in mount.SKILL_DIRS:
             self.assertTrue((self.root / base / "upstream-guide" / "SKILL.md").is_file(), "its skills are linked")
-        self.assertIn("| `upstream-guide` | filo ", (self.root / "SKILLS.md").read_text(), "and listed with their thread")
+        self.assertIn("- filo guides: `", (self.root / "ARCHITECTURE.md").read_text(), "and their folder named")
         guides = next(t for t in self.fabric().threads if t["id"] == "guides")
         self.assertEqual(guides["origin"], "pack bakery")
         config = json.loads(json.dumps(REMOTE))

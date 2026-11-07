@@ -2,7 +2,7 @@
 
 `texo mount` scrive questo file dal core (`<core>/setup/templates/cartella/ARCHITECTURE.md`) e dalla
 configurazione dell'organizzazione nel suo hub: non modificarlo. I limiti sono in `AGENTS.md`, lo stile in
-`DESIGN.md`, le skill in `SKILLS.md`.
+`DESIGN.md`.
 
 ## La cartella di lavoro
 
@@ -49,3 +49,10 @@ risponde, la ricerca prosegue per parole: dillo nella risposta. Hardware e servi
 Fonti, strumenti e connettori montati accanto alla memoria sono *fili*, dichiarati nel hub e montati da
 `texo mount`. Il loro indice è `.texo/THREADS.md` (i file del cliente lo importano) e lo strumento `threads` di
 `memoria`; `<core>/docs/fili.md` li spiega.
+
+## Le skill
+
+Ogni skill è una cartella con il suo `SKILL.md` (la descrizione dice quando usarla) e i suoi riferimenti. Arrivano
+dal core, dai fili che ne portano, dai pacchetti e dalla cartella stessa (`skills/`); `texo mount` le collega dove
+ogni assistente le cerca e, a parità di nome, prevale la cartella, poi il pacchetto, poi il filo, poi il core. Le
+cartelle di questa cartella sono in «Le cartelle delle skill», qui sotto.

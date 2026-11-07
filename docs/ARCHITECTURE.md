@@ -18,8 +18,8 @@ lavoro composta dell'organizzazione.
                 ▼                                   ▼
  cartella di lavoro (il tessuto)      una cartella qualunque, aperta con texo init <hub> <organizzazione>
  ├── texo.toml                        il hub e il nome dell'organizzazione (più aggiunte locali facoltative)
- ├── AGENTS.md, ARCHITECTURE.md,      scritti da texo mount: i limiti, l'infrastruttura, lo stile e le skill;
- │   DESIGN.md, SKILLS.md             CLAUDE.md e GEMINI.md li importano con l'indice dei fili
+ ├── AGENTS.md, ARCHITECTURE.md,      scritti da texo mount: i limiti, l'infrastruttura (con le cartelle
+ │   DESIGN.md                        delle skill) e lo stile; CLAUDE.md e GEMINI.md li importano
  ├── CLAUDE.md, GEMINI.md
  ├── .texo/                           configurazione letta dal hub, THREADS.md, stato del montaggio
  ├── cartelle delle skill             per ogni assistente: le skill del core, dei fili, dei pacchetti, proprie

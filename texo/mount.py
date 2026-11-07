@@ -4,8 +4,8 @@ mount reads the configuration of the organisation from its hub (packs and thread
 the packs of the marketplace and the threads that need it, checks versions and declarations, writes the MCP
 configuration of every assistant (the hub as the server memoria, the MCP threads through texo run-thread, so no
 credential is ever written in a file), links the skills, and writes the files the assistants read: AGENTS.md (the
-limits), ARCHITECTURE.md (where the agent works), DESIGN.md (how it writes), SKILLS.md (which skill for which
-task), CLAUDE.md and GEMINI.md that import them, .texo/THREADS.md. doctor checks that the hub, every thread and every
+limits), ARCHITECTURE.md (where the agent works, the folders of the skills included), DESIGN.md (how it
+writes), CLAUDE.md and GEMINI.md that import them, .texo/THREADS.md. doctor checks that the hub, every thread and every
 credential are there, without showing a credential.
 """
 import datetime
@@ -312,33 +312,9 @@ def refresh(fabric, out, client=None):
     out.write(f"[ok] hub: {len(remote.get('packs') or [])} packs, {len(remote.get('threads') or [])} threads\n")
 
 
-AGENT_FILES = ("AGENTS.md", "ARCHITECTURE.md", "DESIGN.md", "SKILLS.md")
+AGENT_FILES = ("AGENTS.md", "ARCHITECTURE.md", "DESIGN.md")
 POINTERS = ("CLAUDE.md", "GEMINI.md")
 TEMPLATES = Path(__file__).resolve().parent.parent / "setup" / "templates" / "cartella"
-
-
-def skill_summary(skill_md, limit=150):
-    """The first sentence of the description of a skill (its frontmatter), at most limit characters."""
-    try:
-        text = Path(skill_md).read_text(encoding="utf-8")
-    except OSError:
-        return ""
-    if not text.startswith("---\n") or "\n---" not in text[4:]:
-        return ""
-    lines, description, inside = text[4:text.index("\n---", 4)].splitlines(), [], False
-    for line in lines:
-        if line.startswith("description:"):
-            inside = True
-            rest = line[len("description:"):].strip()
-            if rest and rest not in (">-", ">", "|", "|-"):
-                description.append(rest.strip("'\""))
-        elif inside and (line.startswith(" ") or not line.strip()):
-            description.append(line.strip())
-        elif inside:
-            break
-    text = " ".join(part for part in description if part)
-    first = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0]
-    return first if len(first) <= limit else first[:limit - 1].rstrip() + "…"
 
 
 def this_folder(fabric, core, skills):
@@ -352,7 +328,7 @@ def this_folder(fabric, core, skills):
              f"- Core: `{core}`, versione {__version__}.",
              f"- Pacchetti: {names}.",
              f"- Fili: {len(fabric.threads)}, indice in `.texo/THREADS.md`.",
-             f"- Skill: {len(skills)} collegate, in `SKILLS.md`."]
+             f"- Skill: {len(skills)} collegate, nelle cartelle qui sotto."]
     folders = work_dirs(fabric)
     if folders:
         lines.append("- Cartelle di lavoro dei pacchetti, fuori da git: " + ", ".join(f"`{f}/`" for f in folders) + ".")
@@ -375,29 +351,36 @@ def packs_design(fabric):
     return "## Lo stile dei pacchetti\n\n" + "\n".join(parts) + "\n"
 
 
-def skills_table(fabric):
+def skill_folders(fabric):
+    """The part of ARCHITECTURE.md that says where the skills are: the folders the assistants read, and the
+    folder each skill comes from, by origin, with the full path."""
     found, _shadowed = skill_sources(fabric)
     origin = {"core": "core", "this folder": "questa cartella"}
-    rows = ["## Le skill di questa cartella", "", "| Skill | Da | Quando | File |", "|---|---|---|---|"]
-    for name, (layer, folder) in sorted(found.items()):
-        summary = skill_summary(folder / "SKILL.md").replace("|", "/")
-        source = origin.get(layer) or layer.replace("pack ", "pacchetto ").replace("thread ", "filo ")
-        rows.append(f"| `{name}` | {source} | {summary} | `{SKILL_DIRS[0]}/{name}/SKILL.md` |")
-    return "\n".join(rows) + "\n", sorted(found)
+    by_folder = {}
+    for name, (layer, source) in sorted(found.items()):
+        label = origin.get(layer) or layer.replace("pack ", "pacchetto ").replace("thread ", "filo ")
+        by_folder.setdefault((label, str(source.parent)), []).append(name)
+    rank = {"core": 0, "filo": 1, "pacchetto": 2, "questa": 3}
+    lines = ["## Le cartelle delle skill", "", "Collegate qui, dove ogni assistente le cerca:", ""]
+    lines += [f"- `{fabric.root / folder}/`" for folder in SKILL_DIRS]
+    lines += ["", "Da dove viene ciascuna, nell'ordine di precedenza (l'ultima vince a parità di nome):", ""]
+    for (label, folder), names in sorted(by_folder.items(), key=lambda item: rank.get(item[0][0].split()[0], 9)):
+        lines.append(f"- {label}: `{folder}/`: " + ", ".join(f"`{name}`" for name in names) + ".")
+    return "\n".join(lines) + "\n", sorted(found)
 
 
 def agent_files(fabric):
     """The files the assistants read, from the core and the configuration of the organisation: AGENTS.md (the
-    limits), ARCHITECTURE.md (where the agent works, with this folder), DESIGN.md (how it writes, with the style
-    of the packs), SKILLS.md (which skill for which task); CLAUDE.md and GEMINI.md import them with the index of
-    the threads."""
+    limits), ARCHITECTURE.md (where the agent works, with this folder and the folders of its skills), DESIGN.md
+    (how it writes, with the style of the packs); CLAUDE.md and GEMINI.md import them with the index of the
+    threads."""
     core = Path(__file__).resolve().parent.parent
 
     def source(path):
         return path.read_text(encoding="utf-8").replace("<core>", str(core)).rstrip()
 
-    table, skills = skills_table(fabric)
-    folder = this_folder(fabric, core, skills)
+    folders, skills = skill_folders(fabric)
+    folder = this_folder(fabric, core, skills) + "\n" + folders
     design = source(TEMPLATES / "DESIGN.md")
     marker = "## Lo stile dell'organizzazione"
     if marker in design:
@@ -407,7 +390,6 @@ def agent_files(fabric):
         "AGENTS.md": f"{GENERATED}\n{source(core / 'AGENTS.md')}\n",
         "ARCHITECTURE.md": f"{GENERATED}\n{source(TEMPLATES / 'ARCHITECTURE.md')}\n\n{folder}",
         "DESIGN.md": f"{GENERATED}\n{design.rstrip()}\n",
-        "SKILLS.md": f"{GENERATED}\n{source(TEMPLATES / 'SKILLS.md')}\n\n{table}",
     }
     pointer = GENERATED + "\n" + "".join(f"@{name}\n" for name in AGENT_FILES) + "@.texo/THREADS.md\n"
     files.update({name: pointer for name in POINTERS})
