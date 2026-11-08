@@ -108,6 +108,8 @@ permessi e l'audit di Odoo; ciò che vincola gli agenti è una regola dell'organ
 3. Unico canale da un cliente a un pacchetto: la promozione di una lezione, riscritta astratta, verificata su
    una fonte pubblica, con una PR rivista da una persona.
 4. `data_class` di ogni filo: un dato di classe `customer` va solo a fili che la ammettono (`docs/fili.md`).
+   Un filo `personal`, dichiarato solo nel `texo.toml` della cartella, non scambia nulla con il hub né con gli
+   altri fili: la cartella di una persona tiene la sua vita privata accanto al lavoro senza travasi.
 5. `scripts/check_isolation.py` in CI su core, hub e marketplace, con l'elenco dei nomi da bloccare da un
    secret, mai versionato.
 

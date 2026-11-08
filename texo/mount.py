@@ -78,6 +78,35 @@ def check_fabric(fabric):
         problems += threads.check(thread)
         if str(thread.get("origin", "")).startswith("pack "):
             problems += packs.thread_problems(thread)
+        if thread.get("data_class") == "personal" and thread.get("origin") != "local":
+            problems.append(("error", f"{thread.get('id')}: a personal thread is declared only in texo.toml, "
+                                      "never in the hub or in a pack"))
+    personal = [t.get("id") for t in fabric.threads if t.get("data_class") == "personal"]
+    if personal:
+        problems.append(("info", f"personal threads: {', '.join(personal)}: nothing passes between them and the hub "
+                                 "or the threads of the organisation"))
+    problems += check_hooks(fabric)
+    return problems
+
+
+def check_hooks(fabric):
+    """The problems of the [[hook]] of texo.toml; hooks the hub lists are never written."""
+    problems = []
+    if (fabric.remote or {}).get("hooks"):
+        problems.append(("warning", "the hub lists hooks: ignored, a hook is declared only in texo.toml"))
+    ids = [hook.get("id") for hook in fabric.hooks]
+    for duplicate in sorted({i for i in ids if ids.count(i) > 1}, key=str):
+        problems.append(("error", f"hook {duplicate} declared twice"))
+    for hook in fabric.hooks:
+        hid = hook.get("id") or "?"
+        if not threads.ID.match(hook.get("id") or ""):
+            problems.append(("error", f"hook {hid}: id is one lowercase word (letters, digits, - or _)"))
+        if hook.get("event") not in ASSISTANT_EVENTS:
+            problems.append(("error", f"hook {hid}: event is one of {', '.join(ASSISTANT_EVENTS)}"))
+        if not isinstance(hook.get("command"), str) or not hook["command"].strip():
+            problems.append(("error", f"hook {hid}: command is the command to run"))
+        if "matcher" in hook and not isinstance(hook["matcher"], str):
+            problems.append(("error", f"hook {hid}: matcher is a string"))
     return problems
 
 
@@ -109,6 +138,8 @@ def threads_markdown(fabric, states):
         "- data_class dice che cosa un filo può ricevere: public (niente dell'organizzazione), org (i dati",
         "  dell'organizzazione), customer (anche i dati dei suoi clienti). Non mandare mai a un filo dati di una",
         "  classe sopra la sua.",
+        "- personal (i dati della persona: famiglia, vita privata) sta fuori da quella scala: nulla passa tra un",
+        "  filo personal e il hub o gli altri fili, in nessuna direzione.",
         "- Un filo che non risponde: dillo e prosegui senza; `texo doctor` dice perché.",
         "",
         "| Filo | Tipo | data_class | writes | Come | Guida |",
@@ -160,6 +191,23 @@ def merge_json(path, update, mode=None):
 
 # the events of the assistant and the event of texo hook each one calls
 HOOK_EVENTS = (("Stop", "stop"), ("PreCompact", "precompact"), ("SessionEnd", "session-end"))
+# the events a [[hook]] of texo.toml may declare
+ASSISTANT_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop",
+                    "SubagentStop", "PreCompact", "SessionEnd")
+HOOKS_FILE = ".agents/hooks.json"
+
+
+def declared_hooks(fabric):
+    """The [[hook]] of texo.toml as mount writes them: {root} becomes the working folder."""
+    return [{"id": hook["id"], "event": hook["event"], "matcher": hook.get("matcher"),
+             "command": hook["command"].replace("{root}", str(fabric.root))} for hook in fabric.hooks]
+
+
+def hook_entry(hook):
+    entry = {"hooks": [{"type": "command", "command": hook["command"]}]}
+    if hook.get("matcher") is not None:
+        entry = {"matcher": hook["matcher"], **entry}
+    return entry
 
 
 def hooks_update(fabric):
@@ -171,14 +219,45 @@ def hooks_update(fabric):
         return any("texo" in h.get("command", "") and " hook " in h.get("command", "")
                    for h in entry.get("hooks", []) if isinstance(h, dict))
 
+    declared = declared_hooks(fabric)
+    # the commands of the hooks mount wrote last time and writes now: replaced, never doubled
+    written = {h.get("command") for h in load_state(fabric).get("hooks", [])} | {h["command"] for h in declared}
+
+    def mine(entry):
+        return any(h.get("command") in written for h in entry.get("hooks", []) if isinstance(h, dict))
+
     def apply(data):
         hooks = data.setdefault("hooks", {})
+        for event in list(hooks):
+            hooks[event] = [entry for entry in hooks[event] if not (isinstance(entry, dict) and mine(entry))]
+            if not hooks[event]:
+                del hooks[event]
         for event, argument in HOOK_EVENTS:
             kept = [entry for entry in hooks.get(event, []) if isinstance(entry, dict) and not ours(entry)]
             kept.append({"hooks": [{"type": "command",
                                     "command": f"{command} --root {fabric.root} hook {argument}"}]})
             hooks[event] = kept
+        for hook in declared:
+            hooks.setdefault(hook["event"], []).append(hook_entry(hook))
     return apply
+
+
+def write_hooks_file(fabric, out):
+    """The [[hook]] of texo.toml in .agents/hooks.json too, one key per hook; the keys of a previous mount are
+    replaced, those the person wrote stay."""
+    declared = declared_hooks(fabric)
+    previous = [h.get("id") for h in load_state(fabric).get("hooks", [])]
+    path = fabric.root / HOOKS_FILE
+    if not declared and not (previous and path.is_file()):
+        return
+
+    def apply(data):
+        for hid in previous:
+            data.pop(hid, None)
+        for hook in declared:
+            data[hook["id"]] = {hook["event"]: [hook_entry(hook)]}
+    merge_json(path, apply)
+    out.write(f"[ok] {HOOKS_FILE}: {', '.join(h['id'] for h in declared) or 'no hooks'}\n")
 
 
 def write_assistants(fabric, out):
@@ -197,6 +276,7 @@ def write_assistants(fabric, out):
     out.write("[ok] Claude Code: .mcp.json\n")
     merge_json(fabric.root / ".claude" / "settings.local.json", hooks_update(fabric))
     out.write("[ok] Claude Code: .claude/settings.local.json (hooks)\n")
+    write_hooks_file(fabric, out)
     merge_json(fabric.root / ".gemini" / "settings.json", update("mcpServers", "gemini", entry=dict))
     out.write("[ok] Gemini CLI: .gemini/settings.json\n")
     profile = Path(os.environ.get("TEXO_AGY_PROFILE", f"~/.antigravity-texo-{fabric.organisation}")).expanduser()
@@ -266,6 +346,8 @@ def ignore_generated(fabric, out):
     path = fabric.root / ".gitignore"
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
     wanted = list(IGNORED) + [f"{folder}/" for folder in work_dirs(fabric)]
+    if fabric.hooks:
+        wanted.append(HOOKS_FILE)
     # the files of the assistants mount wrote; those the person wrote are theirs to version
     wanted += [name for name in AGENT_FILES + POINTERS if (fabric.root / name).is_file()
                and GENERATED in (fabric.root / name).read_text(encoding="utf-8")]
@@ -314,6 +396,14 @@ def refresh(fabric, out, client=None):
 
 AGENT_FILES = ("AGENTS.md", "ARCHITECTURE.md", "DESIGN.md")
 POINTERS = ("CLAUDE.md", "GEMINI.md")
+# the rules the person writes for this folder: mount never writes it, AGENTS.md leads to it
+LOCAL_RULES = "AGENTS.local.md"
+LOCAL_SECTION = f"""
+## Le regole di questa cartella
+
+Questa cartella ha regole proprie in `{LOCAL_RULES}`, scritte dalla persona e versionate con la cartella: leggile
+all'apertura. Valgono insieme a queste; dove le due dicono cose diverse, vale la più prudente.
+"""
 TEMPLATES = Path(__file__).resolve().parent.parent / "setup" / "templates" / "cartella"
 
 
@@ -332,6 +422,11 @@ def this_folder(fabric, core, skills):
     folders = work_dirs(fabric)
     if folders:
         lines.append("- Cartelle di lavoro dei pacchetti, fuori da git: " + ", ".join(f"`{f}/`" for f in folders) + ".")
+    if (fabric.root / LOCAL_RULES).is_file():
+        lines.append(f"- Regole proprie della cartella: `{LOCAL_RULES}`, della persona, mai scritto da `texo mount`.")
+    if fabric.hooks:
+        declared = ", ".join(f"`{h['id']}` ({h['event']})" for h in fabric.hooks)
+        lines.append(f"- Hook dichiarati in `texo.toml`: {declared}.")
     lines += ["- Proposte delle note di sessione: `.texo/proposals/`.",
               f"- Credenziali: `~/.config/texo/{fabric.organisation}.env`, mai in questa cartella."]
     return "\n".join(lines) + "\n"
@@ -386,12 +481,14 @@ def agent_files(fabric):
     if marker in design:
         before, after = design.split(marker, 1)
         design = before + packs_design(fabric) + marker + after
+    local = (fabric.root / LOCAL_RULES).is_file()
     files = {
-        "AGENTS.md": f"{GENERATED}\n{source(core / 'AGENTS.md')}\n",
+        "AGENTS.md": f"{GENERATED}\n{source(core / 'AGENTS.md')}\n" + (LOCAL_SECTION if local else ""),
         "ARCHITECTURE.md": f"{GENERATED}\n{source(TEMPLATES / 'ARCHITECTURE.md')}\n\n{folder}",
         "DESIGN.md": f"{GENERATED}\n{design.rstrip()}\n",
     }
-    pointer = GENERATED + "\n" + "".join(f"@{name}\n" for name in AGENT_FILES) + "@.texo/THREADS.md\n"
+    imported = AGENT_FILES[:1] + ((LOCAL_RULES,) if local else ()) + AGENT_FILES[1:]
+    pointer = GENERATED + "\n" + "".join(f"@{name}\n" for name in imported) + "@.texo/THREADS.md\n"
     files.update({name: pointer for name in POINTERS})
     return files
 
@@ -445,7 +542,8 @@ def mount(fabric, allow_install=False, out=sys.stdout, client=None, offline=Fals
     ignore_generated(fabric, out)
     state = {"core": __version__, "packs": fabric.packs,
              "threads": [dict(t, **states[t["id"]]) for t in fabric.threads],
-             "mcp_servers": [name for name in servers if name != HUB_SERVER], "skills": skills}
+             "mcp_servers": [name for name in servers if name != HUB_SERVER], "skills": skills,
+             "hooks": [{k: h[k] for k in ("id", "event", "command")} for h in declared_hooks(fabric)]}
     (fabric.state_dir / "threads.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     out.write("[ok] .texo/THREADS.md\n")
     if any(s["status"] == "pending" for s in states.values()):

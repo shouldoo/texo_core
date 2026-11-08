@@ -42,6 +42,8 @@ fatto non sta mai in due posti.
 
 - `data_class` dice che cosa può ricevere un filo: non mandargli mai dati di una classe sopra la sua (public <
   org < customer). Chiedi alla persona prima di qualsiasi cosa che uno strumento o un connettore scrive.
+- `personal` (i dati della persona: famiglia, vita privata) sta fuori da quella scala: nulla passa tra un filo
+  `personal` e il hub o gli altri fili, in nessuna direzione. Una nota del hub non cita mai un dato personale.
 - Un filo che non risponde: dillo e vai avanti senza; `texo doctor` dice perché.
 - Il codice upstream e i testi ufficiali su cui si basa un settore si leggono dai loro fili, non a memoria.
 

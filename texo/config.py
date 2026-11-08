@@ -15,8 +15,16 @@ credentials outside both.
     id = "docs"
     ...
 
+    [[hook]]                                    # optional, only here: a command the assistants run on an event
+    id = "guard"
+    event = "PreToolUse"
+    matcher = "*"                               # optional
+    command = "python3 {root}/guard.py"         # {root}: the working folder
+
+
 The packs and threads come from the hub (route config, cached in .texo/config.json for when it does not answer);
-those of texo.toml are added, or replace the hub's with the same name or id. `texo init` writes texo.toml.
+those of texo.toml are added, or replace the hub's with the same name or id. The hooks come only from texo.toml:
+a command that runs on the person's machine is never configured from the hub. `texo init` writes texo.toml.
 A value written as env:NAME is read from the environment, else from ~/.config/texo/<organisation>.env (mode 600).
 Outside a working folder, the CLI reads TEXO_HUB_URL and TEXO_HUB_TOKEN from the environment.
 """
@@ -112,6 +120,11 @@ class Fabric:
         from . import packs  # packs reads the configuration: imported here, not at the top
         return merge(self.remote.get("threads") or [], self.data.get("thread") or [], "id",
                      base=[thread for pack in self.packs for thread in packs.carried_threads(self, pack)])
+
+    @property
+    def hooks(self):
+        """The [[hook]] of texo.toml, never the hub's: what runs on the machine is decided on the machine."""
+        return [dict(hook) for hook in self.data.get("hook") or []]
 
     @property
     def state_dir(self):

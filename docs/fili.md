@@ -88,7 +88,7 @@ guide = "Documenti dei clienti: leggi, non copiare in locale; registra nel hub l
 | `id` | tutti | una parola minuscola (lettere, cifre, `-`, `_`); `memoria` è riservato al hub |
 | `type` | tutti | `source`, `tool`, `connector` |
 | `driver` | tutti | come ci si collega (sotto) |
-| `data_class` | tutti | che cosa il filo può ricevere: `public` (niente dell'organizzazione), `org` (i dati dell'organizzazione), `customer` (anche quelli dei suoi clienti) |
+| `data_class` | tutti | che cosa il filo può ricevere: `public` (niente dell'organizzazione), `org` (i dati dell'organizzazione), `customer` (anche quelli dei suoi clienti); `personal` (i dati della persona: famiglia, vita privata) sta fuori da questa scala, solo in `texo.toml` |
 | `writes` | tutti | `never` (default) o `confirm`: una scrittura solo dopo il sì della persona |
 | `guide` | tutti | quando usarlo e i suoi limiti: l'agente lo legge nell'indice dei fili |
 | `assistants` | MCP | facoltativo: per quali assistenti montarlo (`claude`, `gemini`, `antigravity`) |
@@ -108,6 +108,7 @@ guide = "Documenti dei clienti: leggi, non copiare in locale; registra nel hub l
 - un tipo, un driver, una `data_class` o un `writes` fuori dall'elenco, un campo richiesto dal driver che manca;
 - una `source` con `writes` diverso da `never`;
 - un `connector` con `data_class = "public"`;
+- un filo `personal` dichiarato nel hub o in un pacchetto: i dati della persona non passano dall'organizzazione;
 - un pacchetto installato al volo (`npx`, `uvx`, `pipx`) senza versione fissata (`nome@1.2.3`);
 - una credenziale scritta come valore invece che `env:NOME` (`auth`, `token`, una variabile di `env` che ha
   l'aria di una chiave);
@@ -216,6 +217,7 @@ dell'organizzazione nel hub, con l'articolo letto, la data di verifica e una sca
 - chiedere alla persona prima di qualsiasi scrittura di un connettore o di uno strumento; un filo con
   `writes = "never"` è in sola lettura;
 - non mandare mai a un filo dati di una classe sopra la sua `data_class`;
+- nulla passa tra un filo `personal` e il hub o gli altri fili, in nessuna direzione;
 - un filo che non risponde: dirlo e proseguire senza; `texo doctor` dice perché.
 
 Il server MCP `memoria` aggiunge alle sue istruzioni l'elenco dei fili con classe e scrittura.
