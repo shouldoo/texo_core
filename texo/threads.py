@@ -17,7 +17,9 @@ from pathlib import Path
 
 TYPES = ("source", "tool", "connector")
 DRIVERS = ("git-remote", "git-mirror", "http", "mcp-stdio", "mcp-http", "cli")
-DATA_CLASSES = ("public", "org", "customer")
+DATA_CLASSES = ("public", "org", "customer", "personal")
+# personal is outside the ladder public < org < customer: the data of the person (family, private life), which
+# never go to the threads of the organisation nor to the hub, and receive nothing from them
 WRITES = ("never", "confirm")
 ID = re.compile(r"^[a-z][a-z0-9_-]*$")
 # a package pinned to an exact version: name@1.2.3, @scope/name@1.2.3, name==1.2.3
@@ -63,7 +65,8 @@ def check(thread):
     if kind == "source" and writes != "never":
         error("a source is read only: writes = \"never\"")
     if kind == "connector" and data_class == "public":
-        error("a connector holds data of the organisation or its customers: data_class org or customer")
+        error("a connector holds data of the organisation, its customers or the person: data_class org, customer "
+              "or personal")
     if kind == "connector" and writes == "never" and driver in ("mcp-stdio", "mcp-http"):
         warning("a connector the agent can only read: check that its tools cannot write")
     if kind == "tool" and data_class == "customer":

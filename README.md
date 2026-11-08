@@ -54,6 +54,29 @@ Users > Texo Skill Packs*, *Texo Threads*) or through the route `admin/config`. 
 under development on this machine, with the version its `pack.toml` carries) is used as it is, nothing is checked
 out: for who writes a pack and loads its demo.
 
+A folder that is also the person's (family, private life, next to the work of the organisation) adds three things,
+all in the folder and never in the hub:
+
+```toml
+[[thread]]                                   # the data of the person: data_class = "personal"
+id = "google"
+type = "connector"
+driver = "mcp-http"
+url = "http://127.0.0.1:18001/mcp"
+data_class = "personal"                      # outside public < org < customer: nothing passes to or from the hub
+writes = "confirm"
+guide = "Mail in draft only, Drive, calendar of the person."
+
+[[hook]]                                     # a command the assistants run on an event; never from the hub
+id = "guard"
+event = "PreToolUse"
+matcher = "*"
+command = "python3 {root}/guard.py"          # {root}: the working folder
+```
+
+and `AGENTS.local.md`, the rules the person writes for the folder: `texo mount` never writes it, `AGENTS.md`
+leads to it and `CLAUDE.md` and `GEMINI.md` import it. It is versioned with the folder.
+
 What `texo mount` leaves in the folder, outside git:
 
 ```text
@@ -63,7 +86,9 @@ CLAUDE.md, GEMINI.md                        the style; CLAUDE.md and GEMINI.md i
                                             threads (written only when absent or written by mount)
 .texo/                                      config.json, THREADS.md, threads.json
 .mcp.json, .gemini/settings.json            the MCP servers: memoria and the MCP threads
-.claude/settings.local.json                 the hooks of the proposal of the session note (texo hook)
+.claude/settings.local.json                 the hooks of the proposal of the session note (texo hook) and the
+                                            [[hook]] of texo.toml
+.agents/hooks.json                          the [[hook]] of texo.toml, when there are
 .texo/proposals/                            the proposals of the session notes the hooks leave
 .agents/skills/, .claude/skills/            links to the skills of core, threads, packs and the folder's own skills/
 <work_dirs of the packs>/                   e.g. progetti/ for the Odoo partners

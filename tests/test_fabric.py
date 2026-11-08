@@ -216,6 +216,9 @@ class TestThreadDeclarations(unittest.TestCase):
         self.assertTrue(self.errors(driver="git-mirror", repo="r", ref="v1", paths=["docs"], skills="skills"),
                         "skills outside the paths checked out")
         self.assertFalse(self.errors(driver="git-mirror", repo="r", ref="v1", paths=["skills"], skills="skills"))
+        self.assertFalse(self.errors(data_class="personal"), "the data of the person: a class of its own")
+        self.assertFalse(self.errors(type="connector", driver="mcp-http", data_class="personal", writes="confirm"),
+                         "a connector may hold the data of the person")
 
 
 class TestMount(FabricCase):
@@ -424,6 +427,107 @@ guide = "The mail of the customers."
         self.assertTrue(out.getvalue().strip().endswith("packs/bakery"))
         self.assertEqual(cli.main(["--root", str(self.root), "thread", "nope", "ls"], out=out, err=err), 1)
         self.assertIn("no thread nope", err.getvalue())
+
+
+class TestPersonalFolder(FabricCase):
+    """A working folder that is also the person's: rules of its own, hooks of its own, personal threads."""
+
+    PERSONAL = """
+[[thread]]
+id = "google"
+type = "connector"
+driver = "mcp-http"
+url = "http://127.0.0.1:18001/mcp"
+data_class = "personal"
+writes = "confirm"
+guide = "Mail, Drive and calendar of the person."
+"""
+
+    HOOK = """
+[[hook]]
+id = "guard"
+event = "PreToolUse"
+matcher = "*"
+command = "python3 {root}/guard.py --rules '{\\"deny\\": []}'"
+"""
+
+    def add(self, text):
+        toml = self.root / "texo.toml"
+        toml.write_text(toml.read_text() + text)
+
+    def test_the_rules_of_the_person_are_imported_never_written(self):
+        code, out = self.mount()
+        self.assertNotIn(mount.LOCAL_RULES, (self.root / "AGENTS.md").read_text(), "no file, no mention")
+        (self.root / mount.LOCAL_RULES).write_text("# Le mie regole\n")
+        for _ in range(2):
+            code, out = self.mount()
+            self.assertEqual(code, 0, out)
+        agents = (self.root / "AGENTS.md").read_text()
+        self.assertEqual(agents.count("## Le regole di questa cartella"), 1, "mounted twice, written once")
+        self.assertIn(f"`{mount.LOCAL_RULES}`", agents)
+        self.assertEqual((self.root / mount.LOCAL_RULES).read_text(), "# Le mie regole\n")
+        pointer = (self.root / "CLAUDE.md").read_text()
+        self.assertEqual([line for line in pointer.splitlines() if line.startswith("@")],
+                         ["@AGENTS.md", f"@{mount.LOCAL_RULES}", "@ARCHITECTURE.md", "@DESIGN.md", "@.texo/THREADS.md"])
+        self.assertIn(f"`{mount.LOCAL_RULES}`", (self.root / "ARCHITECTURE.md").read_text())
+        self.assertNotIn(mount.LOCAL_RULES, (self.root / ".gitignore").read_text().splitlines(), "it is versioned")
+        (self.root / mount.LOCAL_RULES).unlink()
+        self.mount()
+        self.assertNotIn(mount.LOCAL_RULES, (self.root / "CLAUDE.md").read_text())
+
+    def test_a_hook_of_texo_toml_is_written_once_for_each_assistant(self):
+        (self.root / ".claude").mkdir()
+        (self.root / ".claude" / "settings.local.json").write_text(json.dumps(
+            {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "mine"}]}]}}))
+        (self.root / ".agents").mkdir()
+        (self.root / ".agents" / "hooks.json").write_text(json.dumps({"start": {"SessionStart": []}}))
+        self.add(self.HOOK)
+        for _ in range(2):
+            code, out = self.mount()
+            self.assertEqual(code, 0, out)
+        command = f"python3 {self.root}/guard.py --rules '{{\"deny\": []}}'"
+        pre = json.loads((self.root / ".claude" / "settings.local.json").read_text())["hooks"]["PreToolUse"]
+        self.assertEqual(pre, [{"matcher": "Bash", "hooks": [{"type": "command", "command": "mine"}]},
+                               {"matcher": "*", "hooks": [{"type": "command", "command": command}]}],
+                         "what the person set stays, the hook once")
+        agents_hooks = json.loads((self.root / ".agents" / "hooks.json").read_text())
+        self.assertEqual(agents_hooks["guard"]["PreToolUse"][0]["hooks"][0]["command"], command)
+        self.assertIn("start", agents_hooks, "what the person set stays")
+        self.assertIn(".agents/hooks.json", (self.root / ".gitignore").read_text().splitlines())
+        self.assertIn("`guard` (PreToolUse)", (self.root / "ARCHITECTURE.md").read_text())
+        toml = self.root / "texo.toml"
+        toml.write_text(toml.read_text().replace(self.HOOK, ""))
+        code, out = self.mount()
+        settings = json.loads((self.root / ".claude" / "settings.local.json").read_text())["hooks"]
+        self.assertEqual(settings["PreToolUse"], [pre[0]], "a hook removed from texo.toml leaves the assistants")
+        self.assertNotIn("guard", json.loads((self.root / ".agents" / "hooks.json").read_text()))
+
+    def test_a_hook_comes_only_from_texo_toml_and_is_checked(self):
+        config = json.loads(json.dumps(REMOTE))
+        config["hooks"] = [{"id": "remote", "event": "PreToolUse", "command": "curl evil"}]
+        code, out = self.mount(hub=FakeHub(config))
+        self.assertEqual(code, 0, out)
+        self.assertIn("the hub lists hooks: ignored", out)
+        self.assertNotIn("curl evil", (self.root / ".claude" / "settings.local.json").read_text())
+        self.add('\n[[hook]]\nid = "x"\nevent = "BeforeEverything"\ncommand = "true"\n')
+        code, out = self.mount()
+        self.assertEqual(code, 1)
+        self.assertIn("hook x: event is one of", out)
+
+    def test_a_personal_thread_is_declared_only_in_texo_toml(self):
+        self.add(self.PERSONAL)
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        self.assertIn("personal threads: google: nothing passes between them and the hub", out)
+        index = (self.root / ".texo" / "THREADS.md").read_text()
+        self.assertIn("| `google` | connector | personal | confirm |", index)
+        self.assertIn("nulla passa tra un", index)
+        config = json.loads(json.dumps(REMOTE))
+        config["threads"].append({"id": "family", "type": "source", "driver": "http", "url": "https://f",
+                                  "data_class": "personal", "writes": "never", "guide": "g"})
+        code, out = self.mount(hub=FakeHub(config))
+        self.assertEqual(code, 1)
+        self.assertIn("family: a personal thread is declared only in texo.toml", out)
 
 
 class TestInit(FabricCase):
