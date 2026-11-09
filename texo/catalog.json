@@ -1,0 +1,249 @@
+{
+  "models": {
+    "sale.order": {
+      "description": "Ordini di vendita, preventivi clienti e conferme d'ordine",
+      "synonyms": ["ordini", "ordine", "preventivi", "preventivo", "vendite", "offerte"],
+      "default_fields": ["name", "partner_id", "date_order", "amount_total", "state"],
+      "allowed_fields": [
+        "name", "partner_id", "date_order", "amount_total", "amount_untaxed",
+        "state", "user_id", "team_id", "invoice_status", "client_order_ref"
+      ],
+      "field_aliases": {
+        "numero": "name",
+        "codice": "name",
+        "cliente": "partner_id",
+        "data": "date_order",
+        "data_ordine": "date_order",
+        "totale": "amount_total",
+        "imponibile": "amount_untaxed",
+        "stato": "state",
+        "venditore": "user_id",
+        "commerciale": "user_id",
+        "riferimento": "client_order_ref"
+      },
+      "business_filters": {
+        "confermato": [["state", "=", "sale"]],
+        "confermati": [["state", "=", "sale"]],
+        "preventivo": [["state", "in", ["draft", "sent"]]],
+        "preventivi": [["state", "in", ["draft", "sent"]]],
+        "annullato": [["state", "=", "cancel"]],
+        "annullati": [["state", "=", "cancel"]],
+        "da fatturare": [["invoice_status", "=", "to invoice"]]
+      },
+      "date_field": "date_order"
+    },
+    "purchase.order": {
+      "description": "Ordini di acquisto ai fornitori e richieste di preventivo (RFQ)",
+      "synonyms": ["acquisti", "acquisto", "ordini di acquisto", "ordine di acquisto", "rfq", "preventivi fornitore"],
+      "default_fields": ["name", "partner_id", "date_order", "amount_total", "state"],
+      "allowed_fields": [
+        "name", "partner_id", "date_order", "amount_total", "amount_untaxed",
+        "state", "user_id", "invoice_status"
+      ],
+      "field_aliases": {
+        "numero": "name",
+        "fornitore": "partner_id",
+        "data": "date_order",
+        "totale": "amount_total",
+        "imponibile": "amount_untaxed",
+        "acquirente": "user_id",
+        "stato": "state"
+      },
+      "business_filters": {
+        "confermato": [["state", "in", ["purchase", "done"]]],
+        "confermati": [["state", "in", ["purchase", "done"]]],
+        "preventivo": [["state", "in", ["draft", "sent", "to approve"]]],
+        "preventivi": [["state", "in", ["draft", "sent", "to approve"]]],
+        "bozza": [["state", "=", "draft"]],
+        "bozze": [["state", "=", "draft"]],
+        "annullato": [["state", "=", "cancel"]],
+        "annullati": [["state", "=", "cancel"]]
+      },
+      "date_field": "date_order"
+    },
+    "account.move": {
+      "description": "Fatture di vendita, fatture fornitore e note di credito",
+      "synonyms": ["fatture", "fattura", "note di credito", "scadenze"],
+      "default_fields": ["name", "partner_id", "invoice_date", "invoice_date_due", "amount_total", "amount_residual", "payment_state", "state"],
+      "allowed_fields": [
+        "name", "partner_id", "invoice_date", "invoice_date_due", "amount_total",
+        "amount_untaxed", "amount_residual", "payment_state", "state", "move_type", "ref"
+      ],
+      "field_aliases": {
+        "numero": "name",
+        "cliente": "partner_id",
+        "fornitore": "partner_id",
+        "data": "invoice_date",
+        "data_fattura": "invoice_date",
+        "scadenza": "invoice_date_due",
+        "data_scadenza": "invoice_date_due",
+        "totale": "amount_total",
+        "imponibile": "amount_untaxed",
+        "da_pagare": "amount_residual",
+        "residuo": "amount_residual",
+        "stato_pagamento": "payment_state",
+        "stato": "state"
+      },
+      "business_filters": {
+        "cliente": [["move_type", "=", "out_invoice"]],
+        "clienti": [["move_type", "=", "out_invoice"]],
+        "fornitore": [["move_type", "=", "in_invoice"]],
+        "fornitori": [["move_type", "=", "in_invoice"]],
+        "emessa": [["state", "=", "posted"]],
+        "emesse": [["state", "=", "posted"]],
+        "registrata": [["state", "=", "posted"]],
+        "registrate": [["state", "=", "posted"]],
+        "bozza": [["state", "=", "draft"]],
+        "bozze": [["state", "=", "draft"]],
+        "non pagata": [["payment_state", "in", ["not_paid", "partial"]]],
+        "non pagate": [["payment_state", "in", ["not_paid", "partial"]]],
+        "scaduta": [["payment_state", "in", ["not_paid", "partial"]]],
+        "scadute": [["payment_state", "in", ["not_paid", "partial"]]],
+        "pagata": [["payment_state", "=", "paid"]],
+        "pagate": [["payment_state", "=", "paid"]]
+      },
+      "date_field": "invoice_date"
+    },
+    "res.partner": {
+      "description": "Anagrafica clienti, fornitori e contatti",
+      "synonyms": ["clienti", "cliente", "fornitori", "fornitore", "contatti", "aziende"],
+      "default_fields": ["name", "city", "email", "phone", "vat", "user_id"],
+      "allowed_fields": [
+        "name", "city", "zip", "street", "email", "phone", "mobile",
+        "vat", "user_id", "is_company", "customer_rank", "supplier_rank"
+      ],
+      "field_aliases": {
+        "nome": "name",
+        "ragione_sociale": "name",
+        "citta": "city",
+        "città": "city",
+        "piva": "vat",
+        "partita_iva": "vat",
+        "telefono": "phone",
+        "cellulare": "mobile",
+        "mail": "email",
+        "email": "email",
+        "commerciale": "user_id",
+        "referente": "user_id"
+      },
+      "business_filters": {
+        "cliente": [["customer_rank", ">", 0]],
+        "clienti": [["customer_rank", ">", 0]],
+        "fornitore": [["supplier_rank", ">", 0]],
+        "fornitori": [["supplier_rank", ">", 0]],
+        "azienda": [["is_company", "=", true]],
+        "aziende": [["is_company", "=", true]]
+      }
+    },
+    "project.task": {
+      "description": "Attività, task di progetto, ticket e scadenze operative",
+      "synonyms": ["task", "attività", "schede", "compiti", "ticket"],
+      "default_fields": ["name", "project_id", "user_ids", "date_deadline", "state", "is_closed"],
+      "allowed_fields": [
+        "name", "project_id", "user_ids", "date_deadline", "state", "is_closed",
+        "tag_ids", "description", "priority"
+      ],
+      "field_aliases": {
+        "titolo": "name",
+        "nome": "name",
+        "progetto": "project_id",
+        "assegnatario": "user_ids",
+        "assegnatari": "user_ids",
+        "chi": "user_ids",
+        "scadenza": "date_deadline",
+        "data_scadenza": "date_deadline",
+        "stato": "state",
+        "priorità": "priority"
+      },
+      "business_filters": {
+        "aperto": [["is_closed", "=", false]],
+        "aperti": [["is_closed", "=", false]],
+        "aperte": [["is_closed", "=", false]],
+        "in corso": [["state", "=", "01_in_progress"]],
+        "completato": [["is_closed", "=", true]],
+        "completati": [["is_closed", "=", true]],
+        "completate": [["is_closed", "=", true]],
+        "fatto": [["is_closed", "=", true]],
+        "fatti": [["is_closed", "=", true]],
+        "fatte": [["is_closed", "=", true]],
+        "chiuso": [["is_closed", "=", true]],
+        "chiusi": [["is_closed", "=", true]],
+        "chiuse": [["is_closed", "=", true]],
+        "annullato": [["state", "=", "1_canceled"]],
+        "annullati": [["state", "=", "1_canceled"]]
+      },
+      "date_field": "date_deadline"
+    },
+    "stock.picking": {
+      "description": "Spedizioni, consegne, DDT, bolle e movimenti di magazzino",
+      "synonyms": ["ddt", "bolle", "bolla", "spedizioni", "spedizione", "consegne", "consegna", "ricezioni", "ricezione", "movimenti"],
+      "default_fields": ["name", "partner_id", "scheduled_date", "date_done", "state", "picking_type_id"],
+      "allowed_fields": [
+        "name", "partner_id", "scheduled_date", "date_done", "state", "picking_type_id", "origin"
+      ],
+      "field_aliases": {
+        "numero": "name",
+        "riferimento": "name",
+        "origine": "origin",
+        "destinatario": "partner_id",
+        "mittente": "partner_id",
+        "contatto": "partner_id",
+        "cliente": "partner_id",
+        "fornitore": "partner_id",
+        "data": "scheduled_date",
+        "data_prevista": "scheduled_date",
+        "data_effettiva": "date_done",
+        "stato": "state",
+        "tipo": "picking_type_id"
+      },
+      "business_filters": {
+        "consegnato": [["state", "=", "done"]],
+        "consegnati": [["state", "=", "done"]],
+        "consegnate": [["state", "=", "done"]],
+        "spedito": [["state", "=", "done"]],
+        "spediti": [["state", "=", "done"]],
+        "spedite": [["state", "=", "done"]],
+        "fatto": [["state", "=", "done"]],
+        "fatti": [["state", "=", "done"]],
+        "pronto": [["state", "=", "assigned"]],
+        "pronti": [["state", "=", "assigned"]],
+        "pronte": [["state", "=", "assigned"]],
+        "in attesa": [["state", "in", ["confirmed", "waiting"]]],
+        "bozza": [["state", "=", "draft"]],
+        "annullato": [["state", "=", "cancel"]]
+      },
+      "date_field": "scheduled_date"
+    },
+    "product.template": {
+      "description": "Articoli, prodotti a catalogo, listini prezzi e giacenze",
+      "synonyms": ["prodotti", "prodotto", "articoli", "articolo", "catalogo", "listino"],
+      "default_fields": ["name", "default_code", "list_price", "standard_price", "qty_available", "type"],
+      "allowed_fields": [
+        "name", "default_code", "barcode", "list_price", "standard_price", "qty_available", "type", "categ_id"
+      ],
+      "field_aliases": {
+        "nome": "name",
+        "codice": "default_code",
+        "sku": "default_code",
+        "barcode": "barcode",
+        "prezzo": "list_price",
+        "prezzo_vendita": "list_price",
+        "costo": "standard_price",
+        "giacenza": "qty_available",
+        "quantita": "qty_available",
+        "quantità": "qty_available",
+        "categoria": "categ_id",
+        "tipo": "type"
+      },
+      "business_filters": {
+        "disponibile": [["qty_available", ">", 0]],
+        "disponibili": [["qty_available", ">", 0]],
+        "a magazzino": [["qty_available", ">", 0]],
+        "esaurito": [["qty_available", "<=", 0]],
+        "esauriti": [["qty_available", "<=", 0]],
+        "servizio": [["type", "=", "service"]],
+        "servizi": [["type", "=", "service"]]
+      }
+    }
+  }
+}

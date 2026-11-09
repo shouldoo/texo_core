@@ -305,7 +305,20 @@ def op_document_attachment(hub, args):
     return result
 
 
+def op_ask(hub, args):
+    from .grounder import ground_query
+    prompt = args.get("prompt") or args.get("query") or args.get("ask")
+    if not prompt:
+        raise ValueError("Missing prompt for ask")
+    grounded = ground_query(prompt, limit=args.get("limit") or 20)
+    result = hub.call("search_read", grounded)
+    result["grounded"] = {"model": grounded["model"], "domain": grounded["domain"], "fields": grounded["fields"]}
+    return result
+
+
 def op_query(hub, args):
+    if args.get("ask") or not args.get("model"):
+        return op_ask(hub, args)
     payload = {"model": args["model"], "domain": args.get("domain") or [], "fields": args.get("fields") or [],
                "limit": args.get("limit") or 20}
     return hub.call("search_read", payload)
@@ -388,6 +401,7 @@ OPERATIONS = {
     "document_write": op_document_write, "document_remove": op_document_remove, "document_attachment": op_document_attachment,
     "document_convert": op_document_convert,
     "query": op_query,
+    "ask": op_ask,
     "sources_due": op_sources_due, "sources_find": op_sources_find, "sources_inbox": op_sources_inbox,
     "sources_collect": op_sources_collect, "sources_search": op_sources_search, "sources_link": op_sources_link,
     "sources_propose": op_sources_propose, "sources_triage": op_sources_triage, "sources_card": op_sources_card,
@@ -745,6 +759,9 @@ def tool_schemas():
         {"name": "query", "description": "Read-only question on the ERP as myself: search_read of a model with a domain and fields.",
          "inputSchema": {"type": "object", "properties": {"model": string, "domain": {"type": "array"}, "fields": {"type": "array", "items": string}, "limit": integer},
                          "required": ["model"]}},
+        {"name": "ask", "description": "Read-only question on the ERP in natural language: grounds into verified model, domain and fields, then executes search_read safely without hallucinations.",
+         "inputSchema": {"type": "object", "properties": {"prompt": string, "limit": integer},
+                         "required": ["prompt"]}},
         # the external sources, where the hub has texo_sources: the triage of Odoo, in the session
         {"name": "sources_due", "description": "The external source channels overdue (not read for longer than their frequency), with what to look for in each and how it is read. The context pack lists them too.",
          "inputSchema": {"type": "object", "properties": {"project_id": integer}}},
@@ -1026,8 +1043,10 @@ def build_parser(extend=None):
     p.add_argument("--look-for", dest="look_for"); p.add_argument("--every-days", dest="every_days", type=int)
     p.add_argument("--project", dest="project_id", type=int)
     p.add_argument("--feeds", help='JSON list: [{"kind": "rss", "url": "..."}]'); p.add_argument("--yes", action="store_true")
-    p = sub.add_parser("query"); p.add_argument("model"); p.add_argument("--domain", help="JSON list")
-    p.add_argument("--fields", help="comma separated"); p.add_argument("--limit", type=int)
+    p = sub.add_parser("query"); p.add_argument("model", nargs="?"); p.add_argument("--domain", help="JSON list")
+    p.add_argument("--fields", help="comma separated"); p.add_argument("--limit", type=int); p.add_argument("--ask")
+    p = sub.add_parser("ask", help="natural language read-only question on the ERP")
+    p.add_argument("prompt"); p.add_argument("--limit", type=int)
     if extend:
         extend(sub)
     return parser
