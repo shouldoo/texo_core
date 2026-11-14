@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+
 from texo.grounder import OdooSemanticGrounder, ground_query
 
 
@@ -46,6 +47,7 @@ class TestGrounder(unittest.TestCase):
 
     def test_op_ask_dispatch(self):
         from unittest.mock import MagicMock
+
         from texo.hub import op_ask, op_query
 
         mock_hub = MagicMock()
@@ -60,7 +62,7 @@ class TestGrounder(unittest.TestCase):
 
         # test op_query dispatching to op_ask
         mock_hub.reset_mock()
-        res2 = op_query(mock_hub, {"ask": "fatture non pagate"})
+        op_query(mock_hub, {"ask": "fatture non pagate"})
         mock_hub.call.assert_called_once()
         self.assertEqual(mock_hub.call.call_args[0][1]["model"], "account.move")
 

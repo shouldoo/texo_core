@@ -3,17 +3,17 @@ Texo Semantic Grounder: deterministic grounding of natural language ERP queries
 into model, domain and fields for Odoo (search_read).
 """
 
-import os
-import json
-import re
-from datetime import datetime, date
 import calendar
-from typing import Dict, Any, List, Optional
+import json
+import os
+import re
+from datetime import date
+from typing import Any, Dict, List, Optional
 
 
 class OdooSemanticGrounder:
     ALLOWED_OPERATORS = {"=", "!=", ">", "<", ">=", "<=", "in", "not in", "ilike", "=ilike", "like"}
-    
+
     MONTHS_IT = {
         "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
         "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
@@ -29,10 +29,10 @@ class OdooSemanticGrounder:
     def resolve_temporal(self, text: str, date_field: str, ref_date: Optional[date] = None) -> List[List[Any]]:
         if not date_field:
             return []
-        
+
         if ref_date is None:
             ref_date = date.today()
-            
+
         cur_year = ref_date.year
         cur_month = ref_date.month
         t = text.lower()
@@ -78,7 +78,7 @@ class OdooSemanticGrounder:
 
     def match_model(self, text: str) -> Optional[str]:
         t_lower = text.lower()
-        
+
         # 1. Regole prioritarie specifiche
         if any(w in t_lower for w in ["task", "attività", "attivita", "compiti", "ticket"]):
             return "project.task"
@@ -141,7 +141,9 @@ class OdooSemanticGrounder:
 
         # 3. Filtri relazionali
         if model in ("sale.order", "account.move", "purchase.order", "stock.picking"):
-            m_client = re.search(r"\b(?:del cliente|per il cliente|cliente|dal fornitore|del fornitore|fornitore)\s+([A-Z][a-zA-Z0-9_\-]+)", text)
+            m_client = re.search(
+                r"\b(?:del cliente|per il cliente|cliente"
+                r"|dal fornitore|del fornitore|fornitore)\s+([A-Z][a-zA-Z0-9_\-]+)", text)
             if m_client:
                 partner_name = m_client.group(1)
                 if partner_name.lower() not in self.MONTHS_IT and partner_name.lower() not in ["oggi", "ieri"]:
@@ -179,7 +181,7 @@ class OdooSemanticGrounder:
 
         spec = self.catalog[model]
         allowed_fields = set(spec.get("allowed_fields", []))
-        
+
         for fld in payload.get("fields", []):
             if fld not in allowed_fields:
                 raise ValueError(f"Campo '{fld}' non consentito o inesistente su {model}.")
