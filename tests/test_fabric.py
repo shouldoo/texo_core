@@ -502,6 +502,48 @@ command = "python3 {root}/guard.py --rules '{\\"deny\\": []}'"
         self.assertEqual(settings["PreToolUse"], [pre[0]], "a hook removed from texo.toml leaves the assistants")
         self.assertNotIn("guard", json.loads((self.root / ".agents" / "hooks.json").read_text()))
 
+    START = """
+[[hook]]
+id = "start"
+event = "SessionStart"
+matcher = "startup"
+command = "python3 {root}/start.py"
+"""
+
+    def test_the_hooks_file_nests_only_the_hooks_about_a_tool(self):
+        self.add(self.HOOK + self.START)
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        written = json.loads((self.root / ".agents" / "hooks.json").read_text())
+        self.assertEqual(written["guard"]["PreToolUse"][0]["matcher"], "*")
+        self.assertEqual(written["guard"]["PreToolUse"][0]["hooks"][0]["type"], "command")
+        self.assertEqual(written["start"], {"SessionStart": [
+            {"type": "command", "command": f"python3 {self.root}/start.py"}]},
+            "the command itself: the assistant that reads the file refuses all of it on a nested one here")
+        start = json.loads((self.root / ".claude" / "settings.local.json").read_text())["hooks"]["SessionStart"]
+        self.assertEqual(start[-1]["matcher"], "startup", "the settings of an assistant keep the matcher")
+        self.assertEqual(mount.check_hooks_file(self.fabric()), [])
+
+    def test_doctor_says_when_the_hooks_file_loads_no_hook(self):
+        self.add(self.HOOK)
+        self.mount()
+        path = self.root / ".agents" / "hooks.json"
+        data = json.loads(path.read_text())
+        data["start"] = {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "x"}]}]}
+        path.write_text(json.dumps(data))
+        problems = mount.check_hooks_file(self.fabric())
+        self.assertEqual([level for level, _ in problems], ["error"])
+        self.assertIn("the hook start (SessionStart)", problems[0][1])
+        self.assertIn("no hook of the file is loaded", problems[0][1])
+        os.environ["ACME_DRIVE_TOKEN"] = "x"
+        out = io.StringIO()
+        with unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")):
+            self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub()), 1)
+        self.assertIn("[error] .agents/hooks.json: the hook start (SessionStart)", out.getvalue())
+        path.write_text("{not json")
+        self.assertIn("cannot be read", mount.check_hooks_file(self.fabric())[0][1])
+        self.mount()
+
     def test_a_hook_comes_only_from_texo_toml_and_is_checked(self):
         config = json.loads(json.dumps(REMOTE))
         config["hooks"] = [{"id": "remote", "event": "PreToolUse", "command": "curl evil"}]
