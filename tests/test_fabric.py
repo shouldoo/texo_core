@@ -407,8 +407,12 @@ guide = "The mail of the customers."
     def test_without_the_hub_the_configuration_read_last_time_is_used(self):
         self.mount()
         code, out = self.mount(hub=FakeHub(fail=True))
-        self.assertEqual(code, 0, out)
+        self.assertEqual(code, mount.FROM_CACHE, out)
+        self.assertEqual(code, 3, "a script tells it from all mounted (0) and from an error (1)")
         self.assertIn("the configuration read on", out)
+        code, out = self.mount(hub=FakeHub(fail=True), offline=True)
+        self.assertEqual(code, 0, "offline is what the person asked: nothing to tell")
+        self.assertNotIn("[warning] hub", out)
         self.assertEqual(sorted(t["id"] for t in self.fabric().threads), ["drive", "laws", "news"])
 
     def test_a_pack_that_needs_another_core_or_another_version_mounts_nothing(self):
@@ -627,7 +631,7 @@ class TestInit(FabricCase):
         out, err = io.StringIO(), io.StringIO()
         with unittest.mock.patch.dict(os.environ, {"HOME": str(home), "PATH": "/usr/bin:/bin"}):
             code = cli.main(["--root", str(folder), "init", "http://127.0.0.1:9", "acme"], out=out, err=err)
-        self.assertEqual(code, 0, out.getvalue() + err.getvalue())
+        self.assertEqual(code, mount.FROM_CACHE, out.getvalue() + err.getvalue())
         self.assertIn("only texo.toml is used", out.getvalue())
         trusted = json.loads((home / ".claude.json").read_text())["projects"][str(folder)]
         self.assertTrue(trusted["hasTrustDialogAccepted"])
@@ -680,6 +684,152 @@ class TestSeed(FabricCase):
         (folder / "seed.toml").write_text("[[recipes]]\nname = 'x'\n")
         with self.assertRaisesRegex(ConfigError, "unknown tables recipes"):
             seed.payload(self.fabric(), self.fabric().packs[0])
+
+
+class TestMountAgain(FabricCase):
+    """A folder mounted again and again: nothing is rewritten that is already right, two mounts at once do not
+    step on each other, a hub that is off does not keep the person waiting."""
+
+    def snapshot(self):
+        """Every file and link of the folder with what tells it was written again."""
+        found = {}
+        for path in sorted(self.root.rglob("*")):
+            if path.is_symlink() or path.is_file():
+                status = path.lstat()
+                found[str(path.relative_to(self.root))] = (status.st_ino, status.st_mtime_ns)
+        return found
+
+    def test_a_second_mount_rewrites_nothing(self):
+        self.mount()
+        # the first mount says a mirror was cloned, the second that it is there: from then on nothing changes
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        before = self.snapshot()
+        self.assertTrue([name for name in before if name.startswith(".agents/skills/")], "the links are in")
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        self.assertIn("as at the last mount", out)
+        after = self.snapshot()
+        self.assertEqual({name for name in after if after[name] != before.get(name)}, set(),
+                         "no file and no link written again")
+        self.assertFalse(list(self.root.rglob("*.tmp")), "nothing left behind")
+
+    def test_a_file_is_written_only_when_it_changes_and_never_by_halves(self):
+        from texo import files
+        path = self.tmp / "deep" / "file.txt"
+        self.assertTrue(files.write_text(path, "one\n"))
+        first = path.stat()
+        self.assertFalse(files.write_text(path, "one\n"))
+        self.assertEqual(path.stat().st_mtime_ns, first.st_mtime_ns)
+        os.chmod(path, 0o640)
+        self.assertTrue(files.write_text(path, "two\n"))
+        self.assertEqual((path.read_text(), oct(path.stat().st_mode & 0o777)), ("two\n", "0o640"))
+        self.assertNotEqual(path.stat().st_ino, first.st_ino, "written next to itself and renamed")
+        self.assertFalse(files.write_text(path, "two\n", mode=0o600))
+        self.assertEqual(oct(path.stat().st_mode & 0o777), "0o600")
+        link = self.tmp / "link.txt"
+        link.symlink_to(path)
+        self.assertTrue(files.write_text(link, "three\n"))
+        self.assertTrue(link.is_symlink(), "the link stays a link")
+        self.assertEqual(path.read_text(), "three\n")
+        self.assertEqual([p.name for p in path.parent.iterdir()], ["file.txt"])
+
+    def test_the_links_of_the_skills_are_kept_replaced_or_removed(self):
+        self.mount()
+        folder = self.root / ".agents" / "skills"
+        kept = folder / "proofing"
+        inode = kept.lstat().st_ino
+        (folder / "gone").symlink_to("../../nowhere")
+        os.unlink(folder / "texo-sessione")
+        (folder / "texo-sessione").symlink_to("../../elsewhere")
+        (folder / "mine").mkdir()
+        (folder / "mine" / "SKILL.md").write_text("the person's own, not a link\n")
+        self.mount()
+        self.assertEqual(kept.lstat().st_ino, inode, "a link that is right is not made again")
+        self.assertFalse((folder / "gone").is_symlink(), "a link to a skill no longer there is removed")
+        self.assertTrue((folder / "texo-sessione" / "SKILL.md").is_file(), "a link that leads elsewhere is replaced")
+        self.assertTrue((folder / "mine" / "SKILL.md").is_file(), "what is not a link is never touched")
+
+    @unittest.skipIf(mount.fcntl is None, "no advisory locks on this system")
+    def test_one_mount_at_a_time_in_a_folder(self):
+        import fcntl
+        import threading
+        self.mount()
+        with open(self.root / ".texo" / "mount.lock", "a") as other:
+            fcntl.flock(other, fcntl.LOCK_EX)
+            code, out = self.mount(lock_wait=0.3)
+            self.assertEqual(code, 1)
+            self.assertIn("another texo mount is at work in this folder: waiting", out)
+            self.assertIn("nothing mounted", out)
+            threading.Timer(0.3, lambda: fcntl.flock(other, fcntl.LOCK_UN)).start()
+            code, out = self.mount(lock_wait=10)
+            self.assertEqual(code, 0, out)
+            self.assertIn("waiting for it", out)
+
+    def test_two_mounts_at_once_do_not_break_each_other(self):
+        self.mount()
+        command = [sys.executable, "-m", "texo", "--root", str(self.root), "mount", "--offline"]
+        environment = dict(os.environ, PYTHONPATH=str(CORE))
+        for _ in range(5):
+            pair = [subprocess.Popen(command, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     text=True) for _ in range(2)]
+            for process in pair:
+                output, _ = process.communicate(timeout=120)
+                self.assertEqual(process.returncode, 0, output)
+            for name in (".mcp.json", ".agents/hooks.json", ".texo/config.json", ".texo/threads.json"):
+                json.loads((self.root / name).read_text())
+
+    def test_the_fingerprint_of_the_configuration_is_kept_with_its_day(self):
+        self.mount()
+        environment = json.loads((self.root / ".texo" / "environment.json").read_text())
+        self.assertEqual(set(environment), {"config_hash", "config_read", "core"})
+        self.assertEqual(environment["config_hash"], mount.config_hash(REMOTE))
+        self.assertEqual(environment["core"], __version__)
+        shuffled = dict(reversed(list(REMOTE.items())), fetched="2020-01-01")
+        self.assertEqual(mount.config_hash(shuffled), mount.config_hash(REMOTE),
+                         "the same configuration, whatever the order of its keys and the day it was read")
+        changed = json.loads(json.dumps(REMOTE))
+        changed["threads"][1]["guide"] = "Another guide."
+        self.assertNotEqual(mount.config_hash(changed), mount.config_hash(REMOTE))
+        code, out = self.mount(hub=FakeHub(changed))
+        self.assertNotIn("as at the last mount", out)
+        self.assertEqual(json.loads((self.root / ".texo" / "environment.json").read_text())["config_hash"],
+                         mount.config_hash(changed))
+        # a hub that does not answer leaves the fingerprint of the configuration that is used
+        self.mount(hub=FakeHub(fail=True))
+        self.assertEqual(json.loads((self.root / ".texo" / "environment.json").read_text())["config_hash"],
+                         mount.config_hash(changed))
+
+    def test_a_hub_that_is_off_is_given_up_soon(self):
+        import socket
+        import time
+
+        from texo import hub
+        listening = socket.socket()
+        listening.bind(("127.0.0.1", 0))
+        port = listening.getsockname()[1]
+        listening.listen(1)
+        hub.Hub(f"http://127.0.0.1:{port}", "x").check_reachable(2)
+        listening.close()
+        start = time.monotonic()
+        with self.assertRaises(hub.HubError) as raised:
+            hub.Hub(f"http://127.0.0.1:{port}", "x").check_reachable(2)
+        self.assertLess(time.monotonic() - start, 3)
+        self.assertEqual(raised.exception.status, 0)
+        self.assertIn("not reachable", str(raised.exception))
+        # a client with its own opener answers for its connection: it is not asked
+        hub.Hub(f"http://127.0.0.1:{port}", "x", opener=lambda request, timeout=None: None).check_reachable(2)
+        asked = []
+
+        class Probed(FakeHub):
+            def check_reachable(self, timeout):
+                asked.append(timeout)
+                raise hub.HubError(0, "Odoo not reachable within 5 s")
+
+        self.mount()
+        code, out = self.mount(hub=Probed())
+        self.assertEqual((code, asked), (mount.FROM_CACHE, [mount.CONNECT_TIMEOUT]))
+        self.assertIn("the configuration read on", out)
 
 
 # an MCP server over stdio with three tools on two pages: one that reads, one that writes, one that does not

@@ -43,6 +43,19 @@ stesso `id` di un filo del hub lo sostituisce su quella cartella. `texo mount` l
 (route `config`, conservata in `.texo/config.json`; con `--offline` usa quella copia) e vi aggiunge i fili del
 `texo.toml`.
 
+`texo mount` si può rilanciare quanto si vuole sulla stessa cartella:
+
+- scrive un file solo se il contenuto cambia, accanto a sé e poi rinominato, e lascia i collegamenti delle skill
+  che sono già giusti: un secondo mount non riscrive nulla, e chi legge non trova mai mezzo file;
+- uno alla volta per cartella (`.texo/mount.lock`): il secondo aspetta il primo fino a 60 secondi, poi esce
+  dicendo perché;
+- se il hub non accetta la connessione entro 5 secondi usa la configurazione conservata, lo dice in una riga con
+  il giorno in cui l'aveva letta, ed esce con il codice 3. I codici: 0 tutto montato, 1 un errore, 3 montato
+  dalla copia conservata perché il hub non ha risposto. Con `--offline` la copia è una scelta, e il codice è 0;
+- scrive in `.texo/environment.json` l'impronta della configurazione letta (`config_hash`: sha256 del suo JSON
+  canonico, calcolata dal core, senza il giorno di lettura), il giorno (`config_read`) e la versione del core.
+  Quando l'impronta è quella dell'ultimo mount lo dice («as at the last mount»).
+
 La dichiarazione è la stessa nei due posti; in `texo.toml`:
 
 ```toml

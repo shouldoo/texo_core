@@ -19,9 +19,11 @@ import argparse
 import base64
 import json
 import os
+import socket
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from . import __version__, threads
@@ -56,6 +58,21 @@ class Hub:
         self.generated_by = None
         # the threads of the fabric, as texo mount left them (.texo/threads.json)
         self.threads = []
+
+    def check_reachable(self, timeout):
+        """A HubError when the hub does not accept a connection within timeout seconds: asked before a call by
+        who cannot wait TIMEOUT for a machine that is off (texo mount, which has a configuration to fall back
+        on). Not asked through a proxy, nor of a client with its own opener: the connection is not ours."""
+        parts = urllib.parse.urlsplit(self.url)
+        if self.opener is not urllib.request.urlopen or not parts.hostname:
+            return
+        if urllib.request.getproxies().get(parts.scheme) and not urllib.request.proxy_bypass(parts.hostname):
+            return
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        try:
+            socket.create_connection((parts.hostname, port), timeout=timeout).close()
+        except OSError as error:
+            raise HubError(0, f"Odoo not reachable at {self.url} within {timeout} s: {error}") from None
 
     def tools(self):
         """(status, message, tools) of the MCP server of the hub, asked as the person: what the hub itself
