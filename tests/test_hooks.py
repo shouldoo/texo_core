@@ -109,6 +109,36 @@ class TestHooks(unittest.TestCase):
         self.assertEqual(hooks.redact("Authorization: Bearer abc.def"), "Authorization: Bearer [REDACTED]")
         self.assertEqual(hooks.redact("nothing to hide here"), "nothing to hide here")
 
+    def test_redaction_of_a_corpus_made_here(self):
+        # every value is made at each run: a file under version control holds nothing that looks like a secret
+        import base64
+        import secrets
+        word = lambda n: "".join(secrets.choice("abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(n))  # noqa: E731
+        pem_body = "\n".join(base64.b64encode(secrets.token_bytes(48)).decode() for _ in range(6))
+        # the armour is put together here, so that the scan of the repository for secrets finds no key in this file
+        dashes, label = "-" * 5, "RSA PRIVATE" + " KEY"
+        pem = f"{dashes}BEGIN {label}{dashes}\n{pem_body}\n{dashes}END {label}{dashes}"
+        hub_key = secrets.token_hex(20) + "_oak"
+        cases = {
+            "an assignment": ("password = {}", word(16)), "a bearer": ("Authorization: Bearer {}", word(40)),
+            "a prefixed key": ("{}", "ghp_" + word(36)), "a gitlab token": ("{}", "glpat-" + word(20)),
+            "a url": ("postgres://odoo:{}@db:5432/x", word(14)), "an option": ("odoo-bin --db_password {} -d x", word(12)),
+            "a json key": ('{{"access_token": "{}"}}', word(40)), "a header": ("X-Api-Key: {}", word(32)),
+            "an environment variable": ("PGPASSWORD={} psql -h db", word(12)),
+            "a key of the hub": ("{}", hub_key), "a key of the hub as an option": ("texo init --token {}", hub_key),
+            "a long hexadecimal": ("{}", secrets.token_hex(32)),
+        }
+        for name, (template, value) in cases.items():
+            self.assertNotIn(value, hooks.redact(template.format(value)), name)
+        for name, text in (("a private key", pem), ("a private key in an error", "cannot load the key " + pem + " at line 3")):
+            done = hooks.clean(text, 200)
+            self.assertIn("[REDACTED]", done, name)
+            self.assertFalse(any(line in done for line in pem_body.splitlines()), name)
+        self.assertNotIn(pem_body[:40], hooks.redact(pem[:150]), "a private key already cut loses what is left of it")
+        for text in ("commit " + secrets.token_hex(20), secrets.token_hex(16), "il token di accesso va rinnovato",
+                     "the url is https://hub.example/texo/mcp", "pass the option --yes to mount"):
+            self.assertEqual(hooks.redact(text), text, "not a secret")
+
 
 if __name__ == "__main__":
     unittest.main()
