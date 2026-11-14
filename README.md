@@ -154,7 +154,7 @@ Outside a working folder the CLI takes the hub from `TEXO_HUB_URL` and `TEXO_HUB
 |---|---|
 | `AGENTS.md` | the limits of every agent in a working folder (`texo mount` writes them into the folder, with `ARCHITECTURE.md` and `DESIGN.md` from `setup/templates/cartella/` and the configuration of the organisation) |
 | `texo/` | the CLI: `hub.py` (the memory client and the MCP server), `config.py` (`texo.toml`, the configuration of the hub, credentials), `packs.py`, `threads.py` (drivers), `mount.py`, `seed.py`, `bridge.py`, `setup_assistants.py` |
-| `docs/` | `memoria.md` (the model of the memory), `fili.md` (threads and packs), `ARCHITECTURE.md`, `blueprint.md` |
+| `docs/` | `memoria.md` (the model of the memory), `fili.md` (threads and packs), `sub-agenti.md` (when an agent delegates to another, and what comes back), `ARCHITECTURE.md`, `blueprint.md` |
 | `skills/` | `texo-sessione`, `memoria-consolidamento`, `memoria-ingestione`, `memoria-fonti` |
 | `playbooks/` | a new memory system, its profile, the evaluation of the memory, the local coordination Odoo, the review of the knowledge |
 | `scripts/` | `ingest.py` (documents into the memory, Docling or light converters), `eval_memoria.py` and `eval_varianti.py` (the measure of the search), `load_demo.py`, the checks every Texo repository runs (`check_isolation.py`, `check_agents.py`, `check_skills.py`, `check_okf.py`, `check_attribution.py`) |
