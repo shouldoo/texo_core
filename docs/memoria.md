@@ -90,7 +90,9 @@ L'hook della cartella di lavoro (`texo hook`, chiamato dagli assistenti che hann
 di una compattazione e alla chiusura) legge la trascrizione della sessione e lascia in `.texo/proposals/` il
 materiale della nota (task toccati, richieste della persona, file, commit, errori), con i segreti oscurati, e
 chiede all'agente, una volta per sessione, di proporla: la scrittura resta dopo il sì della persona, mai
-dall'hook.
+dall'hook. Legge i formati di trascrizione che `texo/transcripts.py` conosce e, a ogni evento, solo ciò che
+la trascrizione ha guadagnato dall'evento prima (lo stato per sessione è in `.texo/hooks/`). A un assistente
+di cui non è noto come un hook gli chiede qualcosa non chiede nulla: la proposta resta nella sua cartella.
 
 La nota di sessione si scrive per essere ritrovata da chi non ricorda il titolo del task: il problema con le
 parole di chi l'ha sollevato, la causa o il contesto, che cosa si è fatto, e da 5 a 10 parole chiave che

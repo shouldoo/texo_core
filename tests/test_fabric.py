@@ -523,6 +523,10 @@ command = "python3 {root}/start.py"
         start = json.loads((self.root / ".claude" / "settings.local.json").read_text())["hooks"]["SessionStart"]
         self.assertEqual(start[-1]["matcher"], "startup", "the settings of an assistant keep the matcher")
         self.assertEqual(mount.check_hooks_file(self.fabric()), [])
+        self.assertEqual(list(written["texo-note"]), ["Stop"], "the hook of the session note, where it is raised")
+        note = written["texo-note"]["Stop"][0]
+        self.assertEqual(note["type"], "command")
+        self.assertTrue(note["command"].endswith(f"texo --root {self.root} hook stop"), note["command"])
 
     def test_doctor_says_when_the_hooks_file_loads_no_hook(self):
         self.add(self.HOOK)

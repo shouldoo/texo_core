@@ -1,6 +1,10 @@
 import io
 import json
+import os
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -99,6 +103,81 @@ class TestHooks(unittest.TestCase):
         self.assertFalse((self.root / ".texo" / "proposals").exists())
         self.assertEqual(hooks.run("stop", stdin=io.StringIO("{"), out=io.StringIO(), root=self.root), 0)
         self.assertEqual(hooks.run("stop", stdin=io.StringIO("{}"), out=io.StringIO(), root=self.root), 0)
+
+    def test_each_event_reads_only_what_the_transcript_gained(self):
+        self.session_with_work()
+        self.run_hook("precompact")
+        kept = self.root / ".texo" / "hooks" / "abcdef1234.json"
+        state = json.loads(kept.read_text())
+        self.assertEqual(state["transcript"]["offset"], self.path.stat().st_size)
+        self.assertEqual(state["found"]["tasks"], [22])
+        self.assertNotIn("hunter2", kept.read_text(), "the state holds no secret either")
+        self.assertEqual([p.name for p in kept.parent.iterdir()], [kept.name], "no temporary file is left")
+        # the first lines change under the hook: it does not read them again
+        text = self.path.read_text().replace("texo task 22", "texo task 99")
+        self.path.write_text(text + json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Write", "input": {"file_path": str(self.root / "progetti/x/new.py")}}]}}) + "\n")
+        self.run_hook("precompact")
+        proposal = (self.root / ".texo" / "proposals" / "2026-11-06-abcdef12.md").read_text()
+        self.assertIn("tasks: [22]", proposal)
+        self.assertIn("- progetti/x/mail.py", proposal, "what was found before stays")
+        self.assertIn("- progetti/x/new.py", proposal)
+        # a transcript written again, shorter (a compaction): from its beginning, what was found forgotten
+        transcript(self.path, ("assistant", [{"type": "tool_use", "name": "mcp__memoria__task", "input": {"task_id": 5}}]))
+        self.run_hook("precompact")
+        self.assertEqual(json.loads(kept.read_text())["found"]["tasks"], [5])
+        # a state that cannot be read is no state; the end of the session takes the state away
+        kept.write_text("{")
+        self.run_hook("precompact")
+        self.assertEqual(json.loads(kept.read_text())["found"]["tasks"], [5])
+        old = kept.with_name("long-ago.json")
+        old.write_text("{}")
+        os.utime(old, (time.time() - 40 * 86400,) * 2)
+        self.run_hook("precompact", session="another/../session")
+        self.assertEqual(sorted(p.name for p in kept.parent.iterdir()), ["abcdef1234.json", "another_.._session.json"],
+                         "a new session takes away the states of those that ended long ago")
+        self.run_hook("session-end")
+        self.assertFalse(kept.exists())
+
+    def test_the_other_format_and_the_other_names_of_the_fields(self):
+        steps = [
+            {"step_index": 0, "source": "USER", "type": "USER_INPUT", "content": "il report non parte"},
+            {"step_index": 1, "source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [
+                {"name": "call_mcp_tool", "args": {"ServerName": "memoria", "ToolName": "context",
+                                                  "Arguments": {"task_id": 31}}},
+                {"name": "replace_file_content", "args": {"TargetFile": str(self.root / "progetti/y/report.py")}},
+                {"name": "run_command", "args": {"CommandLine": "git commit -m 'fix(report): the date'"}}]},
+            {"step_index": 2, "source": "MODEL", "type": "GENERIC"},
+            {"step_index": 3, "source": "MODEL", "type": "CODE_ACTION"},
+            {"step_index": 4, "source": "MODEL", "type": "RUN_COMMAND", "exit_code": 1, "content": "nothing to commit"},
+        ]
+        self.path.write_text("".join(json.dumps(s) + "\n" for s in steps))
+        out = io.StringIO()
+        payload = {"hookEventName": "Stop", "conversationId": "0123456789", "transcriptPath": str(self.path),
+                   "cwd": str(self.root)}
+        self.assertEqual(hooks.run("stop", stdin=io.StringIO(json.dumps(payload)), out=out, root=self.root,
+                                   today="2026-11-06"), 0)
+        proposal = (self.root / ".texo" / "proposals" / "2026-11-06-01234567.md").read_text()
+        for expected in ("tasks: [31]", "- il report non parte", "- progetti/y/report.py", "- fix(report): the date",
+                         "- nothing to commit"):
+            self.assertIn(expected, proposal)
+        self.assertEqual(out.getvalue(), "", "an assistant whose hook is not known to take the request is not asked")
+
+    def test_the_command_of_the_hook_does_not_load_the_client_of_the_hub(self):
+        self.session_with_work()
+        payload = json.dumps({"session_id": "abcdef1234", "transcript_path": str(self.path), "cwd": str(self.root)})
+        core = Path(__file__).resolve().parent.parent
+        for arguments in (["--root", str(self.root), "hook", "stop"], [f"--root={self.root}", "hook", "stop"],
+                          ["hook", "stop"]):
+            done = subprocess.run([sys.executable, "-X", "importtime", "-m", "texo", *arguments], input=payload,
+                                  capture_output=True, text=True, cwd=core, check=False)
+            self.assertEqual(done.returncode, 0, done.stderr[-500:])
+            self.assertNotIn("urllib.request", done.stderr)
+            self.assertNotIn("texo.cli", done.stderr)
+        self.assertTrue(list((self.root / ".texo" / "proposals").glob("*.md")))
+        done = subprocess.run([sys.executable, "-m", "texo", "hook", "unknown"], input="{}", capture_output=True,
+                              text=True, cwd=core, check=False)
+        self.assertEqual(done.returncode, 2, "an event that is not one is still refused by the CLI")
 
     def test_redaction(self):
         # the fixtures are built at run time: a secret scanner must not read them in this file
