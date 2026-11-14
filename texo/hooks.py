@@ -32,7 +32,13 @@ from pathlib import Path
 from . import transcripts
 from .config import find_root
 
-EVENTS = ("stop", "precompact", "session-end")
+EVENTS = ("stop", "precompact", "session-end", "session-start")
+# where texo mount leaves the rules of a folder mounted as a guest of a repository (mount.is_guest), and the
+# order they are read in
+GUEST_RULES = (("AGENTS.md", "i tuoi limiti"), ("ARCHITECTURE.md", "dove lavori"), ("DESIGN.md", "come scrivi"),
+               ("THREADS.md", "i fili montati accanto alla memoria"))
+# the fields that tell the assistant whose hooks answer with steps to inject, not with plain text
+STEPS_FIELDS = ("conversationId",)
 PROPOSALS = ".texo/proposals"
 STATES = ".texo/hooks"
 PACK_CHECKS = ".texo/checks.json"
@@ -299,6 +305,31 @@ def first(payload, names):
     return next((payload[name] for name in names if payload.get(name)), None)
 
 
+def guest_rules(root):
+    """What an agent is told at the start of a session in a folder mounted as a guest: where the rules of the
+    core are, since the files the assistant loads by itself are the repository's own. None elsewhere."""
+    folder = Path(root) / ".texo"
+    if not (folder / GUEST_RULES[0][0]).is_file():
+        return None
+    files = "; ".join(f"`{folder / name}` ({what})" for name, what in GUEST_RULES if (folder / name).is_file())
+    return ("Questa cartella è una cartella di lavoro di Texo, montata come ospite di un repository che ha le sue "
+            f"regole. Prima di lavorare leggi, in quest'ordine: {files}. Valgono insieme alle regole del "
+            "repository; dove dicono cose diverse, vale la più prudente.")
+
+
+def session_start(payload, root, out):
+    """The start of a session: in a guest folder, the rules of the core reach the agent from here, in the form
+    the assistant takes (plain text, or a step to inject). Says nothing anywhere else."""
+    text = guest_rules(root) if root else None
+    if not text:
+        return 0
+    if first(payload, STEPS_FIELDS):
+        out.write(json.dumps({"injectSteps": [{"systemMessage": {"systemMessage": text}}]}, ensure_ascii=False) + "\n")
+    else:
+        out.write(text + "\n")
+    return 0
+
+
 def run(event, stdin=sys.stdin, out=sys.stdout, root=None, today=None):
     """One event of an assistant: read its JSON, read what the transcript gained, write or drop the proposal,
     and at the end of a turn ask the agent, once per session, to propose the note. Always exits 0 and says
@@ -310,6 +341,8 @@ def run(event, stdin=sys.stdin, out=sys.stdout, root=None, today=None):
     if not isinstance(payload, dict):
         return 0
     root = Path(root) if root else find_root(Path(payload.get("cwd") or Path.cwd()))
+    if event == "session-start":
+        return session_start(payload, root, out)
     transcript = first(payload, TRANSCRIPT_FIELDS)
     session_id = str(first(payload, SESSION_FIELDS) or "")
     if not root or not isinstance(transcript, str):
