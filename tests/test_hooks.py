@@ -179,6 +179,112 @@ class TestHooks(unittest.TestCase):
                               text=True, cwd=core, check=False)
         self.assertEqual(done.returncode, 2, "an event that is not one is still refused by the CLI")
 
+    def session_of(self, *calls):
+        """A transcript of calls and their results: (tool, argument, failure text or None)."""
+        with open(self.path, "w", encoding="utf-8") as handle:
+            for number, (tool, argument, failure) in enumerate(calls):
+                key = "command" if tool == "Bash" else "file_path"
+                handle.write(json.dumps({"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "id": f"call{number}", "name": tool, "input": {key: argument}}]}}) + "\n")
+                handle.write(json.dumps({"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": f"call{number}", "is_error": failure is not None,
+                     "content": failure or "ok"}]}}) + "\n")
+
+    def candidates(self):
+        return hooks.resolved(hooks.read_transcript(self.path), hooks.load_checks(), self.root)["candidates"]
+
+    def test_a_check_that_failed_and_passed_after_a_change_is_the_candidate_of_a_lesson(self):
+        source = str(self.root / "progetti/x/mail.py")
+        self.session_of(("Bash", "cd progetti/x && pytest tests -q", "\n=== FAILURES ===\nAssertionError: 2 != 3"),
+                        ("Edit", source, None),
+                        ("Bash", "pytest tests -q", None))
+        self.assertEqual(self.candidates(), [{"check": "pytest", "command": "cd progetti/x && pytest tests -q",
+                                              "error": "=== FAILURES ===", "files": ["progetti/x/mail.py"]}])
+        self.run_hook("precompact")
+        proposal = (self.root / ".texo" / "proposals" / "2026-11-06-abcdef12.md").read_text(encoding="utf-8")
+        self.assertIn("## Candidati di lezione", proposal)
+        self.assertIn("- controllo `pytest` (`cd progetti/x && pytest tests -q`): fallito, poi passato dopo la "
+                      "modifica di `progetti/x/mail.py`. Errore: === FAILURES ===", proposal)
+
+    def test_what_is_not_a_check_solved_gives_no_candidate(self):
+        source = str(self.root / "a.py")
+        # the session of the other tests: an error with no check behind it, a change, a commit
+        self.session_with_work()
+        self.assertEqual(self.candidates(), [], "an error is not a check that failed")
+        self.run_hook("precompact")
+        self.assertNotIn("Candidati di lezione", next((self.root / ".texo" / "proposals").glob("*.md")).read_text())
+        for calls, why in (
+            ([("Read", "/missing", "No such file or directory"), ("Edit", source, None), ("Bash", "ls", None)],
+             "a file that could not be read, then any command that worked"),
+            ([("Bash", "pytest", "1 failed"), ("Bash", "pytest", None)], "it passed with no file changed"),
+            ([("Bash", "pytest", "1 failed"), ("Edit", source, "old_string not found"), ("Bash", "pytest", None)],
+             "the change failed"),
+            ([("Bash", "pytest", "1 failed"), ("Edit", source, None), ("Bash", "ruff check .", None)],
+             "another check passed, not the one that failed"),
+            ([("Edit", source, None), ("Bash", "pytest", "1 failed"), ("Bash", "pytest", None)],
+             "the change came before the failure"),
+            ([("Bash", "pytest", "1 failed"), ("Edit", source, None)], "it has not passed yet"),
+        ):
+            self.session_of(*calls)
+            self.assertEqual(self.candidates(), [], why)
+
+    def test_one_candidate_for_each_check_and_two_for_each_session(self):
+        source = str(self.root / "a.py")
+        fix = [("Edit", source, None)]
+        self.session_of(("Bash", "pytest", "first failure"), *fix, ("Bash", "pytest", "second failure"), *fix,
+                        ("Bash", "pytest", "third failure"), ("Edit", str(self.root / "b.py"), None), ("Bash", "pytest", None),
+                        ("Bash", "pytest", "again"), *fix, ("Bash", "pytest", None))
+        self.assertEqual(self.candidates(), [{"check": "pytest", "command": "pytest", "error": "first failure",
+                                              "files": ["a.py", "b.py"]}], "failed three times, then passed: one")
+        self.session_of(*[step for check in ("pytest", "ruff check .", "make test")
+                          for step in ((("Bash", check, "no"),) + tuple(fix) + (("Bash", check, None),))])
+        self.assertEqual([c["check"] for c in self.candidates()], ["pytest", "ruff"], "never more than two")
+
+    def test_an_outcome_the_transcript_does_not_say_is_no_outcome(self):
+        steps = [
+            {"step_index": 0, "source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [
+                {"name": "run_command", "args": {"CommandLine": "pytest"}},
+                {"name": "write_to_file", "args": {"TargetFile": str(self.root / "a.py")}},
+                {"name": "run_command", "args": {"CommandLine": "pytest"}}]},
+            {"step_index": 1, "source": "MODEL", "type": "RUN_COMMAND", "exit_code": 1, "content": "1 failed"},
+            {"step_index": 2, "source": "MODEL", "type": "CODE_ACTION"},
+            {"step_index": 3, "source": "MODEL", "type": "GENERIC", "content": "3 passed"},
+        ]
+        self.path.write_text("".join(json.dumps(s) + "\n" for s in steps))
+        self.assertEqual(self.candidates(), [], "a text that reads as a success is not one")
+        steps[3] = {"step_index": 3, "source": "MODEL", "type": "RUN_COMMAND", "exit_code": 0}
+        self.path.write_text("".join(json.dumps(s) + "\n" for s in steps))
+        self.assertEqual([c["check"] for c in self.candidates()], ["pytest"])
+
+    def test_the_candidate_is_found_across_the_events_of_the_hook_and_holds_no_secret(self):
+        source = str(self.root / "a.py")
+        calls = [("Bash", "make test", "connection to postgres://odoo:" + "hunter2hunter2" + "@db failed\nmore"),
+                 ("Edit", source, None), ("Bash", "make test", None)]
+        for upto in (1, 2, 3):
+            self.session_of(*calls[:upto])
+            self.run_hook("precompact")
+        kept = (self.root / ".texo" / "hooks" / "abcdef1234.json").read_text()
+        proposal = next((self.root / ".texo" / "proposals").glob("*.md")).read_text()
+        self.assertIn("Errore: connection to postgres://odoo:[REDACTED]@db failed", proposal)
+        self.assertNotIn("hunter2", kept + proposal)
+        self.assertEqual(json.loads(kept)["checks"]["closed"], ["make"])
+
+    def test_the_checks_are_data_and_a_pack_adds_its_own(self):
+        self.session_of(("Bash", "odoo-bin -d test --test-tags /x", "FAIL"), ("Edit", str(self.root / "a.py"), None),
+                        ("Bash", "odoo-bin -d test --test-tags /x", None))
+        self.assertEqual(self.candidates(), [], "not a check of the core")
+        (self.root / ".texo").mkdir(exist_ok=True)
+        (self.root / ".texo" / "checks.json").write_text(json.dumps({"checks": [
+            {"name": "odoo tests", "pattern": r"\bodoo-bin\b.*--test"}, {"name": "broken", "pattern": "("}, "x", {}]}))
+        events = hooks.read_transcript(self.path)
+        found = hooks.resolved(events, hooks.load_checks(self.root), self.root)["candidates"]
+        self.assertEqual([c["check"] for c in found], ["odoo tests"])
+        (self.root / ".texo" / "checks.json").write_text("[")
+        self.assertEqual(len(hooks.load_checks(self.root)), len(hooks.load_checks()), "a file that is not one adds nothing")
+        for command, check in (("python3 -m unittest discover -s tests", "unittest"), ("npm run test", "npm test"),
+                               ("git commit -m 'make it' -m \"pytest \\\" passes\"", None), ("ls -la", None), ("FOO=1 make -C x test", "make"), ("texo mount --yes", "texo doctor")):
+            self.assertEqual(hooks.check_of(command, hooks.load_checks()), check, command)
+
     def test_redaction(self):
         # the fixtures are built at run time: a secret scanner must not read them in this file
         fixtures = "TEXO_HUB_TOKEN=abc123 and " + "sk-" + "ABCDEFGHIJKLMNOP" + " and " + "AKIA" + "ABCDEFGHIJKLMNOP"

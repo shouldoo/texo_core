@@ -178,6 +178,7 @@ o ne cambia la versione su quella cartella.
 ```text
 packs/<nome>/
 ├── pack.toml        [pack] name, version, core (il core che richiede), work_dirs; [[thread]]; [[suggested_thread]]
+│                    [[check]] name, pattern: un comando del settore che conta come controllo (i suoi test)
 ├── skills/          le skill del settore, con i loro riferimenti
 ├── seed.toml        attività, sezioni, regole e template di progetto del settore (texo seed)
 ├── DESIGN.md        facoltativo: lo stile del settore (come si scrive il suo codice o i suoi testi), in DESIGN.md

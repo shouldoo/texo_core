@@ -311,6 +311,25 @@ class TestMount(FabricCase):
         toml = self.root / "texo.toml"
         toml.write_text(toml.read_text().replace(str(self.marketplace), str(marketplace)))
 
+    def test_a_pack_declares_the_commands_that_count_as_a_check(self):
+        self.pack_with_threads("""
+[[check]]
+name = "oven tests"
+pattern = 'oven\\s+--test'
+""")
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        self.assertIn("[ok] checks of the packs: oven tests", out)
+        written = json.loads((self.root / ".texo" / "checks.json").read_text())
+        self.assertEqual(written, {"checks": [{"name": "oven tests", "pattern": "oven\\s+--test",
+                                               "origin": "pack bakery"}]})
+        from texo import hooks
+        self.assertEqual(hooks.check_of("oven  --test all", hooks.load_checks(self.root)), "oven tests")
+        self.assertEqual(mount.check_problems({"name": "x", "pattern": "("})[0][:38],
+                         "check x: pattern is a regular expressi")
+        self.assertEqual(mount.check_problems({"pattern": "x"}), ["a [[check]] has a name"])
+        self.assertEqual(mount.check_problems({"name": "x"})[0][:16], "check x: pattern")
+
     def test_a_pack_carries_its_threads_and_the_hub_may_replace_them(self):
         self.pack_with_threads(f"""
 [[thread]]
