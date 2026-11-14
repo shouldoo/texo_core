@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 
 from .mount import thread_env
+from .threads import events  # noqa: F401  (the bridge reads server-sent events as doctor does)
 
 TIMEOUT = 300
 
@@ -20,17 +21,6 @@ def run_stdio(fabric, thread):
     os.chdir(fabric.root)
     command = [thread["command"], *thread.get("args", [])]
     os.execvpe(command[0], command, thread_env(fabric, thread))
-
-
-def events(body):
-    """The JSON-RPC messages of a server-sent events body."""
-    data = []
-    for line in body.splitlines() + [""]:
-        if line.startswith("data:"):
-            data.append(line[5:].strip())
-        elif not line.strip() and data:
-            yield json.loads("\n".join(data))
-            data = []
 
 
 def bridge_http(fabric, thread, stdin=sys.stdin, stdout=sys.stdout):

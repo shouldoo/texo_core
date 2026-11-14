@@ -1,5 +1,6 @@
 """Tests of a working folder: texo.toml, the configuration of the hub, the packs of the marketplace, the threads,
 mount, doctor, seed and the bridge (no hub, no network: the marketplace and the mirror are local repositories)."""
+import contextlib
 import io
 import json
 import os
@@ -8,6 +9,7 @@ import sys
 import tempfile
 import unittest
 import unittest.mock
+import urllib.error
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -90,9 +92,30 @@ def repository(path, files, tag):
     git("tag", tag, cwd=path)
 
 
+def answering(tools=()):
+    """The threads over http answer without the network: a HEAD for a source, the handshake for an MCP
+    server, with these tools."""
+    stack = contextlib.ExitStack()
+    stack.enter_context(unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")))
+    stack.enter_context(unittest.mock.patch.object(threads, "mcp_http_tools",
+                                                   return_value=("ok", "MCP server drive 1", list(tools))))
+    return stack
+
+
+def hub_tools(change=None):
+    """What tools/list of a hub answers: the tools of this core, each saying whether it writes."""
+    from texo import hub
+    tools = [{"name": name, "annotations": {"readOnlyHint": name not in hub.WRITE_TOOLS}} for name in hub.OPERATIONS]
+    return [dict(tool, **(change or {}).get(tool["name"], {})) for tool in tools]
+
+
 class FakeHub:
-    def __init__(self, config=None, fail=False, status=0):
+    def __init__(self, config=None, fail=False, status=0, tools=None):
         self.config, self.fail, self.status, self.calls = config or REMOTE, fail, status, []
+        self.listed = hub_tools() if tools is None else tools
+
+    def tools(self):
+        return "ok", "MCP server memoria 20.0", self.listed
 
     def call(self, route, payload=None):
         from texo.hub import HubError
@@ -412,13 +435,13 @@ guide = "The mail of the customers."
 
     def test_doctor_reports_what_is_missing(self):
         out = io.StringIO()
-        with unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")):
+        with answering():
             self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub()), 1)
         self.assertIn("[error] laws: not mounted", out.getvalue())
         self.mount()
         os.environ["ACME_DRIVE_TOKEN"] = "x"
         out = io.StringIO()
-        with unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")):
+        with answering():
             self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub()), 0, out.getvalue())
         self.assertIn("[ok] hub: lead@acme.example, role lead", out.getvalue())
         self.assertIn("[ok] pack bakery v1.2.0: installed", out.getvalue())
@@ -427,7 +450,7 @@ guide = "The mail of the customers."
     def test_doctor_asks_the_hub_with_the_token(self):
         self.mount()
         os.environ["ACME_DRIVE_TOKEN"] = "x"
-        with unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")):
+        with answering():
             out = io.StringIO()
             self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub(fail=True, status=401)), 1)
             self.assertIn("[error] hub 401: the token is invalid or expired", out.getvalue())
@@ -560,7 +583,7 @@ command = "python3 {root}/start.py"
         self.assertIn("no hook of the file is loaded", problems[0][1])
         os.environ["ACME_DRIVE_TOKEN"] = "x"
         out = io.StringIO()
-        with unittest.mock.patch.object(threads, "doctor_http", return_value=("ok", "answers 200")):
+        with answering():
             self.assertEqual(mount.doctor(self.fabric(), out=out, client=FakeHub()), 1)
         self.assertIn("[error] .agents/hooks.json: the hook start (SessionStart)", out.getvalue())
         path.write_text("{not json")
@@ -657,6 +680,181 @@ class TestSeed(FabricCase):
         (folder / "seed.toml").write_text("[[recipes]]\nname = 'x'\n")
         with self.assertRaisesRegex(ConfigError, "unknown tables recipes"):
             seed.payload(self.fabric(), self.fabric().packs[0])
+
+
+# an MCP server over stdio with three tools on two pages: one that reads, one that writes, one that does not
+# say. It lists nothing before the notification initialized, as a strict server does.
+FAKE_MCP = r"""
+import json, sys
+ready = False
+PAGES = {None: ([{"name": "look", "annotations": {"readOnlyHint": True}},
+                 {"name": "store", "annotations": {"readOnlyHint": False}}], "next"),
+         "next": ([{"name": "mystery", "annotations": {"title": "Mystery"}}], None)}
+for line in sys.stdin:
+    message = json.loads(line)
+    method, rid = message.get("method"), message.get("id")
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake", "version": "0.1"}}
+    elif method == "notifications/initialized":
+        ready = True
+        continue
+    elif method == "tools/list" and ready:
+        tools, cursor = PAGES[(message.get("params") or {}).get("cursor")]
+        result = {"tools": tools, **({"nextCursor": cursor} if cursor else {})}
+    else:
+        print(json.dumps({"jsonrpc": "2.0", "id": rid, "error": {"code": -32002, "message": "not initialized"}}), flush=True)
+        continue
+    print("a line that is not JSON", flush=True)
+    print(json.dumps({"jsonrpc": "2.0", "id": rid, "result": result}), flush=True)
+"""
+
+
+class FakeResponse:
+    def __init__(self, body, kind="application/json", session=None):
+        self.body, self.headers = body, {"Content-Type": kind, **({"Mcp-Session-Id": session} if session else {})}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self.body.encode()
+
+
+class TestWriteAudit(FabricCase):
+    """What doctor learns from the tools of an MCP thread, and what it says of a thread declared read only."""
+
+    def fake_server(self):
+        script = Path(tempfile.mkdtemp()) / "fake_mcp.py"
+        script.write_text(FAKE_MCP, encoding="utf-8")
+        return [sys.executable, str(script)]
+
+    def thread(self, **values):
+        return dict({"id": "srv", "type": "connector", "driver": "mcp-stdio", "data_class": "org", "writes": "never"},
+                    **values)
+
+    def test_the_handshake_sends_initialized_and_reads_every_page_of_tools(self):
+        status, message, tools = threads.mcp_stdio_tools(self.fake_server())
+        self.assertEqual((status, message), ("ok", "MCP server fake 0.1"))
+        self.assertEqual([tool["name"] for tool in tools], ["look", "store", "mystery"])
+        self.assertEqual(threads.tools_that_write(tools), (["store"], ["mystery"]))
+        self.assertEqual(threads.mcp_stdio_handshake(self.fake_server()), ("ok", "MCP server fake 0.1"))
+        status, message, tools = threads.mcp_stdio_tools(["/nonexistent/texo-no-such-server"])
+        self.assertEqual((status, tools), ("error", None))
+        status, message, tools = threads.mcp_stdio_tools([sys.executable, "-c", "pass"])
+        self.assertEqual((status, message, tools), ("error", "the server did not answer initialize", None))
+
+    def test_a_thread_declared_read_only_is_checked_on_what_its_tools_declare(self):
+        look = {"name": "look", "annotations": {"readOnlyHint": True}}
+        store = {"name": "store", "annotations": {"readOnlyHint": False}}
+        mystery = {"name": "delete_everything"}
+        never, confirm = self.thread(), self.thread(writes="confirm")
+        status, message = threads.write_audit(never, "ok", "MCP server x", [look, store, mystery])
+        self.assertEqual(status, "error")
+        self.assertIn("they declare that they write: store", message)
+        status, message = threads.write_audit(never, "ok", "MCP server x", [look, mystery])
+        self.assertEqual(status, "warning", "never ok, and never an error, for a name alone")
+        self.assertIn("do not say whether they write: delete_everything", message)
+        self.assertEqual(threads.write_audit(never, "ok", "MCP server x", [look]),
+                         ("ok", "MCP server x; 1 tools, 0 that write"))
+        self.assertEqual(threads.write_audit(confirm, "ok", "MCP server x", [look, store, mystery]),
+                         ("ok", "MCP server x; 3 tools, 1 that write, 1 that do not say"))
+        self.assertEqual(threads.write_audit(never, "ok", "MCP server x", None)[0], "warning",
+                         "tools that were not listed are not tools that only read")
+        self.assertEqual(threads.write_audit(confirm, "ok", "MCP server x", None), ("ok", "MCP server x"))
+        self.assertEqual(threads.write_audit(never, "error", "cannot start", None), ("error", "cannot start"))
+        # a source or a tool, not only a connector
+        for kind in ("source", "tool"):
+            self.assertEqual(threads.write_audit(self.thread(type=kind), "ok", "x", [store])[0], "error")
+
+    def test_doctor_runs_the_audit_on_a_thread_over_stdio(self):
+        command = self.fake_server()
+        fabric = self.fabric()
+        thread = self.thread(command=command[0], args=command[1:])
+        status, message = mount.doctor_thread(fabric, thread)
+        self.assertEqual(status, "error")
+        self.assertIn("3 tools, 1 that write", message)
+        status, message = mount.doctor_thread(fabric, dict(thread, writes="confirm"))
+        self.assertEqual(status, "ok")
+
+    def test_a_thread_over_http_is_asked_for_real(self):
+        asked = []
+
+        def opener(request, timeout=None):
+            message = json.loads(request.data)
+            asked.append((request.get_method(), message["method"], request.get_header("Authorization"),
+                          request.get_header("Mcp-session-id")))
+            if message["method"] == "initialize":
+                return FakeResponse(json.dumps({"jsonrpc": "2.0", "id": message["id"],
+                                                "result": {"serverInfo": {"name": "remote", "version": "2"}}}),
+                                    session="s1")
+            if message["method"] == "notifications/initialized":
+                return FakeResponse("")
+            body = json.dumps({"jsonrpc": "2.0", "id": message["id"],
+                               "result": {"tools": [{"name": "look", "annotations": {"readOnlyHint": True}}]}})
+            return FakeResponse(f"event: message\ndata: {body}\n\n", kind="text/event-stream")
+
+        status, message, tools = threads.mcp_http_tools("https://srv.example/mcp", "tok", opener)
+        self.assertEqual((status, message, [t["name"] for t in tools]), ("ok", "MCP server remote 2", ["look"]))
+        self.assertEqual([a[:2] for a in asked], [("POST", "initialize"), ("POST", "notifications/initialized"),
+                                                 ("POST", "tools/list")])
+        self.assertEqual({a[2] for a in asked}, {"Bearer tok"})
+        self.assertEqual([a[3] for a in asked], [None, "s1", "s1"], "the session the server opened")
+
+        def refusing(request, timeout=None):
+            raise urllib.error.HTTPError(request.full_url, 401, "Unauthorized", {}, io.BytesIO(b""))
+
+        status, message, tools = threads.mcp_http_tools("https://srv.example/mcp", None, refusing)
+        self.assertEqual((status, tools), ("ok", None), "reachable: the assistant logs in, doctor cannot")
+        self.assertEqual(threads.write_audit(self.thread(driver="mcp-http"), status, message, tools)[0], "warning")
+        status, message, tools = threads.mcp_http_tools("https://srv.example/mcp", "tok", refusing)
+        self.assertEqual(status, "error")
+        self.assertNotIn("tok", message)
+        status, message, tools = threads.mcp_http_tools("https://srv.example/mcp", None,
+                                                        lambda request, timeout=None: FakeResponse("<html>"))
+        self.assertEqual((status, tools), ("error", None))
+
+    def test_doctor_compares_the_tools_of_the_hub_with_the_ones_it_confirms(self):
+        from texo import hub
+        self.mount()
+        os.environ["ACME_DRIVE_TOKEN"] = "x"
+
+        def doctor(tools=None):
+            out = io.StringIO()
+            with answering():
+                code = mount.doctor(self.fabric(), out=out, client=FakeHub(tools=tools))
+            return code, out.getvalue()
+
+        code, out = doctor()
+        self.assertEqual(code, 0, out)
+        self.assertIn(f"[ok] hub tools: {len(hub.OPERATIONS)}, {len(hub.WRITE_TOOLS)} that write, as this core expects", out)
+        # a hub without texo_timesheet or texo_sources lists fewer tools: the two still agree
+        code, out = doctor([t for t in hub_tools() if not t["name"].startswith(("sources_", "log_time"))])
+        self.assertIn("as this core expects", out)
+        code, out = doctor(hub_tools({"note": {"annotations": {"readOnlyHint": True}},
+                                      "search": {"annotations": {"readOnlyHint": False}}}))
+        self.assertEqual(code, 0, "a warning, the session still works")
+        self.assertIn("no confirmation asked here for: search", out)
+        self.assertIn("the hub says they only read: note", out)
+        code, out = doctor([{"name": name} for name in hub.OPERATIONS])
+        self.assertIn("do not say whether they write", out)
+        self.assertEqual(code, 0)
+
+    def test_the_tools_that_write_are_the_ones_the_hub_declares(self):
+        from texo import hub
+        # the same names as the test of texo_mcp in the hub (test_every_tool_says_whether_it_writes): a tool
+        # that writes is added on both sides
+        self.assertEqual(set(hub.WRITE_TOOLS), {
+            "task_note", "note", "note_append", "note_update", "fact", "fact_append", "fact_update", "lesson",
+            "update", "state", "log_time", "confirm", "document_write", "document_remove", "document_convert",
+            "sources_collect", "sources_search", "sources_link", "sources_propose", "sources_triage",
+            "sources_card", "sources_channel"})
+        listed = hub.handle_message(None, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
+        for tool in listed:
+            self.assertEqual(tool["annotations"], {"readOnlyHint": tool["name"] not in hub.WRITE_TOOLS}, tool["name"])
+        self.assertEqual(threads.tools_that_write(listed), (sorted(set(hub.WRITE_TOOLS)), []))
 
 
 class TestBridge(unittest.TestCase):

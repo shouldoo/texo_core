@@ -125,7 +125,7 @@ and an expiry.
 |---|---|
 | `init <hub url> <organisation>` | writes `texo.toml`, trusts the folder and its MCP server `memoria` for Claude Code (the MCP servers of the threads wait for the approval of the person; and an Antigravity profile when `agy` is installed), then mounts |
 | `mount [--yes] [--offline]` | reads the configuration of the hub; installs the packs; checks their versions, the core they need and every thread; clones the git-mirror sources (only their `paths` when declared); installs pinned CLIs (with `--yes`); writes the MCP configuration of Claude Code, Gemini CLI and the Antigravity profile; links the skills of core, threads, packs and folder; creates the working folders of the packs; writes `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.texo/THREADS.md` |
-| `doctor` | checks the hub, every pack, thread and credential, without showing a credential |
+| `doctor` | checks the hub, every pack, thread and credential, without showing a credential; asks every MCP thread for its tools and says which declare that they write on a thread declared `writes = "never"` |
 | `threads` | the threads of the folder (also the tool `threads` of the MCP server `memoria`) |
 | `thread <id> ls\|read\|search` | reads a git-remote source at its pinned ref, without cloning it |
 | `seed [--apply --yes]` | the `seed.toml` of every pack into the hub (route `admin/seed`, administrators): a dry run, then the writes |
