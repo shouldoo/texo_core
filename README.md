@@ -92,6 +92,7 @@ CLAUDE.md, GEMINI.md                        the style; CLAUDE.md and GEMINI.md i
                                             and the [[hook]] of texo.toml
 .texo/proposals/                            the proposals of the session notes the hooks leave
 .texo/hooks/                                for each session, where the hook stopped reading its transcript
+.texo/checks.json                           the [[check]] of the packs, when there are
 .agents/skills/, .claude/skills/            links to the skills of core, threads, packs and the folder's own skills/
 <work_dirs of the packs>/                   e.g. progetti/ for the Odoo partners
 ```
@@ -105,6 +106,7 @@ The marketplace is one repository; `packs/<name>/` is a pack and the tag `<name>
 ```text
 packs/<name>/
 ├── pack.toml        [pack] name, version, core it needs, work_dirs; [[thread]] it carries; [[suggested_thread]]
+│                    [[check]] name, pattern: a command of the sector that counts as a check (its tests)
 ├── skills/          the skills of the sector, each with its references
 ├── seed.toml        activities, sections, rules and project templates of the sector, for texo seed
 └── demo/            optional: a fictional organisation for tests (setup/load-demo.sh)

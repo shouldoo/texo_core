@@ -1,0 +1,15 @@
+{
+  "checks": [
+    {"name": "pytest", "pattern": "\\bpytest\\b"},
+    {"name": "unittest", "pattern": "\\bpython[0-9.]*\\s+(?:-\\w+\\s+)*-m\\s+unittest\\b"},
+    {"name": "ruff", "pattern": "\\bruff\\b"},
+    {"name": "pre-commit", "pattern": "\\bpre-commit\\b"},
+    {"name": "eslint", "pattern": "\\beslint\\b"},
+    {"name": "tsc", "pattern": "\\btsc\\b"},
+    {"name": "npm test", "pattern": "\\b(?:npm|pnpm|yarn)\\s+(?:run\\s+)?(?:test|lint|build)\\b"},
+    {"name": "cargo", "pattern": "\\bcargo\\s+(?:test|build|check|clippy)\\b"},
+    {"name": "go", "pattern": "\\bgo\\s+(?:test|build|vet)\\b"},
+    {"name": "make", "pattern": "\\bmake\\b"},
+    {"name": "texo doctor", "pattern": "\\btexo\\s+(?:doctor|mount)\\b"}
+  ]
+}

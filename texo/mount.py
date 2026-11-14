@@ -65,6 +65,8 @@ def check_fabric(fabric):
         if not satisfies(__version__, info.get("core")):
             problems.append(("error", f"pack {name} needs core {info.get('core')}, the core is {__version__}: "
                                       "update texo (setup/install.sh)"))
+        for check in manifest.get("check") or []:
+            problems += [("error", f"pack {name}: {problem}") for problem in check_problems(check)]
         for suggested in manifest.get("suggested_thread") or []:
             if suggested.get("id") not in declared:
                 problems.append(("info", f"pack {name} suggests the thread {suggested.get('id')}: "
@@ -369,6 +371,31 @@ def link_skills(fabric, out):
     return sorted(found)
 
 
+def check_problems(check):
+    """The problems of a [[check]] of a pack.toml: a command that counts as a check (a test runner, a linter, a
+    build) for the candidate of a lesson the hook of the session note finds."""
+    if not isinstance(check, dict) or not isinstance(check.get("name"), str) or not check["name"].strip():
+        return ["a [[check]] has a name"]
+    try:
+        re.compile(check.get("pattern"))
+    except (TypeError, re.error) as error:
+        return [f"check {check['name']}: pattern is a regular expression ({error})"]
+    return []
+
+
+def write_checks(fabric, out):
+    """The [[check]] of the packs in .texo/checks.json, where the hook of the session note reads them next to
+    those of the core; no check, no file."""
+    checks = [{"name": check["name"], "pattern": check["pattern"], "origin": f"pack {pack['name']}"}
+              for pack in fabric.packs for check in (packs.manifest(fabric, pack) or {}).get("check") or []]
+    path = fabric.state_dir / "checks.json"
+    if checks:
+        path.write_text(json.dumps({"checks": checks}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        out.write(f"[ok] checks of the packs: {', '.join(check['name'] for check in checks)}\n")
+    elif path.is_file():
+        path.unlink()
+
+
 def work_dirs(fabric):
     """The working folders the packs declare (work_dirs in pack.toml): created by mount, never versioned."""
     folders = []
@@ -573,6 +600,7 @@ def mount(fabric, allow_install=False, out=sys.stdout, client=None, offline=Fals
         failed |= status == "error"
     fabric.state_dir.mkdir(exist_ok=True)
     (fabric.state_dir / "THREADS.md").write_text(threads_markdown(fabric, states), encoding="utf-8")
+    write_checks(fabric, out)
     servers = write_assistants(fabric, out)
     skills = link_skills(fabric, out)
     for folder in work_dirs(fabric):

@@ -94,6 +94,13 @@ dall'hook. Legge i formati di trascrizione che `texo/transcripts.py` conosce e, 
 la trascrizione ha guadagnato dall'evento prima (lo stato per sessione è in `.texo/hooks/`). A un assistente
 di cui non è noto come un hook gli chiede qualcosa non chiede nulla: la proposta resta nella sua cartella.
 
+Quando un controllo (un test, un linter, una build) è fallito, un file è stato modificato e lo stesso
+controllo è poi passato, la proposta lo nomina come candidato di lezione: il controllo, i file modificati, la
+prima riga dell'errore, con i segreti oscurati. Al più uno per controllo e due per sessione; dove la
+trascrizione non dice come un comando è finito, nulla è dedotto. È materiale per l'agente, che propone la
+lezione alla persona. I comandi che contano come controllo sono dati: `texo/checks.json` nel core e i
+`[[check]]` del `pack.toml` di un pacchetto.
+
 La nota di sessione si scrive per essere ritrovata da chi non ricorda il titolo del task: il problema con le
 parole di chi l'ha sollevato, la causa o il contesto, che cosa si è fatto, e da 5 a 10 parole chiave che
 finiscono nelle parole chiave del task, pesate nella ricerca più del chatter.

@@ -9,6 +9,11 @@ changed, the commits, the errors met; secrets are redacted before anything is wr
 end of a turn that worked on a task without writing its note, the hook asks the agent to propose the note to
 the person; nothing is written in the hub by the hook, ever: the agent proposes, the person says yes.
 
+When a check (a test runner, a linter, a build) failed, a file was changed and the same check then passed, the
+proposal also names it as the candidate of a lesson: material for the agent, who proposes the lesson to the
+person. The commands that count as a check are data: `texo/checks.json`, and those the packs of the folder
+declare, which `texo mount` leaves in `.texo/checks.json`.
+
 The transcript is read through texo.transcripts, which knows the formats of the assistants, and a piece at a
 time: next to the proposals the hook keeps, for each session, where it stopped reading and what it found
 (`.texo/hooks/<session>.json`), so that each event reads only what the transcript gained since the last one.
@@ -30,6 +35,9 @@ from .config import find_root
 EVENTS = ("stop", "precompact", "session-end")
 PROPOSALS = ".texo/proposals"
 STATES = ".texo/hooks"
+PACK_CHECKS = ".texo/checks.json"
+MAX_CANDIDATES = 2
+MAX_CANDIDATE_FILES = 3
 STATE_DAYS = 30
 # the names an assistant gives, in the JSON of its hook, to what the hook reads: the transcript, the session,
 # and the turn that goes on because a hook asked it to
@@ -136,7 +144,78 @@ def extract(events, root=None, found=None):
     return found
 
 
-def proposal_text(session_id, found, today):
+def load_checks(root=None):
+    """The commands that count as a check, [(name, pattern)]: those of the core, then those of the packs of the
+    folder. An entry that is not a name and a pattern that compiles is left out."""
+    checks = []
+    for path in (Path(__file__).with_name("checks.json"), *([Path(root) / PACK_CHECKS] if root else [])):
+        try:
+            entries = json.loads(path.read_text(encoding="utf-8")).get("checks")
+        except (OSError, ValueError, AttributeError):
+            continue
+        for entry in entries if isinstance(entries, list) else []:
+            try:
+                checks.append((str(entry["name"]), re.compile(entry["pattern"])))
+            except (TypeError, KeyError, re.error):
+                continue
+    return checks
+
+
+QUOTED = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
+
+
+def check_of(command, checks):
+    """The check a command line runs: the name of the first one it matches, or None. What the line quotes is
+    not looked at: the message of a commit that names a check does not run it."""
+    bare = QUOTED.sub("''", command)
+    return next((name for name, pattern in checks if pattern.search(bare)), None)
+
+
+def first_line(text):
+    """The first line of a text that says something, redacted with the whole text and cut."""
+    return next((short(line, 200) for line in redact(text or "").splitlines() if line.strip()), "")
+
+
+def nothing_tracked():
+    return {"open": {}, "closed": [], "candidates": []}
+
+
+def resolved(events, checks, root=None, tracked=None):
+    """The errors the session then solved: a check that failed, a file changed after it, the same check that
+    passed. tracked = {open, closed, candidates}: the checks that failed and wait, those that gave their
+    candidate, the candidates [{check, command, error, files}]. A check that passes again with no file changed
+    since it failed gives nothing and may fail again. One candidate
+    per check at most, MAX_CANDIDATES per session. Only a result that says how it ended counts: where the
+    transcript does not say, nothing is deduced."""
+    tracked = tracked if tracked is not None else nothing_tracked()
+    waiting, closed, candidates = tracked["open"], tracked["closed"], tracked["candidates"]
+    for event in events:
+        if event["phase"] != "result" or event["ok"] is None:
+            continue
+        target = event["target"]
+        if event["kind"] == "edit" and event["ok"] and target:
+            path = str(target)
+            if root and path.startswith(str(root)):
+                path = str(Path(path).relative_to(root))
+            for failed in waiting.values():
+                if redact(path) not in failed["files"] and len(failed["files"]) < MAX_CANDIDATE_FILES:
+                    failed["files"].append(redact(path))
+        elif event["kind"] == "command" and isinstance(target, str):
+            check = check_of(target, checks)
+            if not check or check in closed:
+                continue
+            if event["ok"] is False:
+                waiting.setdefault(check, {"check": check, "command": clean(target, 120),
+                                           "error": first_line(event["text"]), "files": []})
+            elif check in waiting:
+                failed = waiting.pop(check)
+                if failed["files"] and len(candidates) < MAX_CANDIDATES:
+                    candidates.append(failed)
+                    closed.append(check)
+    return tracked
+
+
+def proposal_text(session_id, found, today, candidates=()):
     """The proposal as a Markdown file: what the hook found, then the four parts of the note to fill."""
     lines = ["---", f"session: {session_id}", f"written: {today}",
              f"tasks: [{', '.join(str(t) for t in found['tasks'])}]", "---", "",
@@ -159,6 +238,16 @@ def proposal_text(session_id, found, today):
     section("File toccati", found["files"], "- nessuno")
     section("Commit", found["commits"], "- nessuno")
     section("Errori incontrati", found["errors"], "- nessuno")
+    if candidates:
+        lines += ["## Candidati di lezione", "",
+                  "Un controllo è fallito, un file è stato modificato, lo stesso controllo è poi passato. Se ciò che "
+                  "si è capito serve a un altro progetto, proponi alla persona una lezione (skill texo-sessione), "
+                  "senza il cliente; altrimenti lascia perdere.", ""]
+        for candidate in candidates:
+            files = ", ".join(f"`{name}`" for name in candidate["files"])
+            lines.append(f"- controllo `{candidate['check']}` (`{candidate['command']}`): fallito, poi passato dopo "
+                         f"la modifica di {files}. Errore: {candidate['error'] or 'non riportato'}")
+        lines.append("")
     lines += ["## La nota, da scrivere", "",
               "- **Sintomo o richiesta**, con le parole di chi l'ha sollevata:", "- **Causa o contesto**:",
               "- **Che cosa si è fatto o deciso**, e lo stato:",
@@ -182,7 +271,9 @@ def load_state(path):
     except (OSError, ValueError):
         return {}
     found = state.get("found") if isinstance(state, dict) else None
-    if not isinstance(found, dict) or set(found) != set(nothing_found()):
+    tracked = state.get("checks") if isinstance(state, dict) else None
+    if not isinstance(found, dict) or set(found) != set(nothing_found()) \
+            or not isinstance(tracked, dict) or set(tracked) != set(nothing_tracked()):
         return {}
     return state
 
@@ -229,11 +320,13 @@ def run(event, stdin=sys.stdin, out=sys.stdout, root=None, today=None):
     before = adapter.offset
     events = adapter.read(transcript)
     found = extract(events, root, None if adapter.restarted else state.get("found"))
+    tracked = resolved(events, load_checks(root) if events else [], root,
+                       None if adapter.restarted else state.get("checks"))
     if event == "session-end":
         if kept.exists():
             kept.unlink()
     elif adapter.offset != before or adapter.restarted:
-        save_state(kept, {"transcript": adapter.state(), "found": found})
+        save_state(kept, {"transcript": adapter.state(), "found": found, "checks": tracked})
     today = today or datetime.date.today().isoformat()
     path = proposal_path(root, session_id, today)
     asked = path.with_suffix(".asked")
@@ -247,7 +340,7 @@ def run(event, stdin=sys.stdin, out=sys.stdout, root=None, today=None):
         return 0
     if events or not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(proposal_text(session_id, found, today), encoding="utf-8")
+        path.write_text(proposal_text(session_id, found, today, tracked["candidates"]), encoding="utf-8")
     # only the assistant whose hook is known to take the request below is asked: for another, the proposal
     # waits in its folder, where the rules of the folder say to look
     if event != "stop" or "transcript_path" not in payload or first(payload, CONTINUING_FIELDS) or asked.exists():
