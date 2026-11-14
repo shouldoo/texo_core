@@ -656,7 +656,33 @@ def doctor_hub(fabric, client, out):
     if remote.get("organisation") and remote["organisation"] != fabric.organisation:
         out.write(f"[warning] the hub names the organisation {remote['organisation']}, texo.toml "
                   f"{fabric.organisation}: the credentials file is named after texo.toml\n")
+    doctor_hub_tools(client, out)
     return False
+
+
+def doctor_hub_tools(client, out):
+    """The tools of the hub against the ones this core asks a confirmation for (hub.WRITE_TOOLS): the hub says
+    which of its tools write, and the two lists must agree on the tools both know. Never an error: an older
+    hub says nothing, and the session still works."""
+    status, message, tools = client.tools()
+    if tools is None:
+        out.write(f"[warning] hub tools: not listed ({message})\n")
+        return
+    writers, silent = threads.tools_that_write(tools)
+    names = {str(tool.get("name")) for tool in tools}
+    if silent:
+        out.write(f"[warning] hub tools: {len(tools)}, {len(silent)} that do not say whether they write "
+                  f"(a hub before texo_mcp 20.0.1.5.0?): {', '.join(silent)}\n")
+        return
+    known = set(hub.OPERATIONS)
+    only_hub = sorted((set(writers) & known) - set(hub.WRITE_TOOLS))
+    only_core = sorted((set(hub.WRITE_TOOLS) & names) - set(writers))
+    if only_hub or only_core:
+        out.write(f"[warning] hub tools: the hub and this core do not agree on what writes"
+                  f"{'; no confirmation asked here for: ' + ', '.join(only_hub) if only_hub else ''}"
+                  f"{'; the hub says they only read: ' + ', '.join(only_core) if only_core else ''}\n")
+        return
+    out.write(f"[ok] hub tools: {len(tools)}, {len(writers)} that write, as this core expects\n")
 
 
 def doctor_thread(fabric, thread):
@@ -670,12 +696,12 @@ def doctor_thread(fabric, thread):
     if driver == "cli":
         return threads.doctor_cli(thread)
     if driver == "mcp-http":
-        if thread.get("auth"):
-            fabric.secret(thread["auth"])
-        return threads.doctor_http(thread)
+        token = fabric.secret(thread["auth"]) if thread.get("auth") else None
+        return threads.write_audit(thread, *threads.mcp_http_tools(thread["url"], token))
     if driver == "mcp-stdio":
         env = thread_env(fabric, thread)
-        return threads.mcp_stdio_handshake([thread["command"], *thread.get("args", [])], env=env, cwd=fabric.root)
+        return threads.write_audit(thread, *threads.mcp_stdio_tools(
+            [thread["command"], *thread.get("args", [])], env=env, cwd=fabric.root))
     return "error", f"unknown driver {driver}"
 
 

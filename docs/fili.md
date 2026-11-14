@@ -115,8 +115,34 @@ guide = "Documenti dei clienti: leggi, non copiare in locale; registra nel hub l
 - un `id` dichiarato due volte, o `memoria`.
 
 E avvisano: un `ref` che è un branch mobile (`main`, `master`, `HEAD`), un `tool` che riceve dati di classe
-`customer`, un connettore MCP con `writes = "never"` (verificare che i suoi strumenti non scrivano), un filo
-senza `guide`.
+`customer`, un connettore MCP con `writes = "never"` (i suoi strumenti li controlla `texo doctor`, qui sotto), un
+filo senza `guide`.
+
+### `writes` è una dichiarazione
+
+`writes` dice all'agente che cosa può fare con un filo e non è applicato a runtime: Texo non sta tra
+l'assistente e il server MCP, e uno strumento che scrive resta chiamabile. Chi vuole un blocco lo mette nei
+permessi dell'assistente o in un hook prima degli strumenti (`[[hook]]` di `texo.toml`).
+
+`texo doctor` controlla la dichiarazione su ciò che il server dice di sé. A ogni filo MCP, di qualsiasi tipo,
+fa l'handshake vero (`initialize`, `notifications/initialized`, `tools/list` pagina per pagina; per un filo
+`mcp-http` una chiamata, non un HEAD) e legge `annotations.readOnlyHint` di ogni strumento:
+
+| Il filo dichiara | Gli strumenti dicono | `texo doctor` |
+|---|---|---|
+| `writes = "never"` | almeno uno dichiara di scrivere (`readOnlyHint: false`) | errore, con i nomi |
+| `writes = "never"` | nessuno scrive, ma alcuni non dichiarano nulla | avviso, con i nomi |
+| `writes = "never"` | l'elenco non si ottiene (il server vuole un login dell'assistente) | avviso: non controllato |
+| `writes = "never"` | tutti dichiarano di leggere soltanto | ok |
+| `writes = "confirm"` | qualsiasi | ok, con i conteggi |
+
+Il nome di uno strumento non conta mai: uno che non dichiara nulla non è «ok» perché si chiama `get_…`, né un
+errore perché si chiama `delete_…`. E la dichiarazione di un server resta la sua parola: un server può dire
+di leggere e scrivere lo stesso.
+
+Lo stesso vale per il hub: il suo server MCP dichiara quali strumenti scrivono (`texo_mcp` dalla 20.0.1.5.0), e
+`texo doctor` confronta quell'elenco con gli strumenti per cui questo core chiede la conferma. Se i due non
+coincidono lo dice con un avviso; un hub più vecchio non dichiara nulla, ed è un avviso anche quello.
 
 ## Credenziali
 
@@ -136,8 +162,8 @@ ancora.
 | `git-remote` | fonti in un repository letto da remoto | niente da installare | `git ls-remote` del `ref` | `texo thread <id> ls [percorso]`, `read <percorso>`, `search <parole>`, sempre al `ref` fissato |
 | `git-mirror` | fonti da leggere con `rg` in locale, skill pubblicate da terzi | clone shallow al `ref` in `$TEXO_SHARED_DIR/mirrors/<id>` (default `~/.local/share/texo`), una copia per macchina condivisa dalle cartelle di lavoro, solo le `paths` se dichiarate; riallineato quando il `ref` cambia | la copia esiste, è al `ref` fissato e contiene la cartella `skills` | `rg` nella cartella, in sola lettura; le sue skill come le altre |
 | `http` | documentazione o feed | registrazione; con `hub_channel` un canale del hub (`texo seed`) | l'indirizzo risponde | il suo indirizzo |
-| `mcp-stdio` | strumenti e connettori MCP locali | voce `texo run-thread <id>` nella configurazione di ogni assistente | avvio del server e risposta a `initialize` | gli strumenti del server MCP `<id>` |
-| `mcp-http` | strumenti e connettori MCP remoti | come `mcp-stdio`: `texo run-thread` fa da ponte stdio → Streamable HTTP, con la credenziale come bearer | la credenziale c'è, l'indirizzo risponde | come sopra |
+| `mcp-stdio` | strumenti e connettori MCP locali | voce `texo run-thread <id>` nella configurazione di ogni assistente | avvio del server, handshake (`initialize`, `notifications/initialized`, `tools/list`) e controllo di `writes` sugli strumenti | gli strumenti del server MCP `<id>` |
+| `mcp-http` | strumenti e connettori MCP remoti | come `mcp-stdio`: `texo run-thread` fa da ponte stdio → Streamable HTTP, con la credenziale come bearer | la credenziale c'è, lo stesso handshake con una chiamata vera, e lo stesso controllo | come sopra |
 | `cli` | strumenti a riga di comando | verifica della versione; se manca, il comando `install` solo con `texo mount --yes` | il comando è nel PATH alla versione fissata | il comando |
 
 La lettura di un `git-remote` senza clone vale per i repository su `github.com`; la ricerca (`search`) usa
@@ -201,7 +227,7 @@ dell'organizzazione nel hub, con l'articolo letto, la data di verifica e una sca
 |---|---|
 | `texo init <hub> <organizzazione>` | scrive `texo.toml` (hub e organizzazione), fa fidare la cartella a Claude Code (e crea il profilo Antigravity se `agy` c'è), poi monta |
 | `texo mount [--yes] [--offline]` | legge la configurazione del hub e vi aggiunge `texo.toml`; installa i pacchetti e ne verifica versione e core richiesto; verifica le dichiarazioni dei fili (con un errore non monta nulla); clona i `git-mirror`; installa i `cli` mancanti solo con `--yes`; scrive la configurazione MCP di Claude Code (`.mcp.json`), Gemini CLI (`.gemini/settings.json`) e del profilo Antigravity dell'organizzazione se esiste, togliendo i fili rimossi e lasciando ciò che la persona ha aggiunto; collega le skill del core, dei fili con `skills`, dei pacchetti e della cartella (`skills/`) in `.agents/skills/` e `.claude/skills/` (a parità di nome vince la cartella, poi il pacchetto, poi il filo); crea le cartelle di lavoro dei pacchetti (`work_dirs`); scrive `AGENTS.md` (i limiti), `ARCHITECTURE.md` (dove lavora l'agente, con questa cartella e le cartelle delle sue skill) e `DESIGN.md` (come scrive, con lo stile dei pacchetti), e `CLAUDE.md` e `GEMINI.md` che li importano, se mancano o se li aveva scritti lui; genera `.texo/THREADS.md` e `.texo/threads.json`; aggiunge i file generati al `.gitignore` |
-| `texo doctor` | le stesse verifiche della dichiarazione, il token del hub (senza mostrarlo), il hub che risponde, i pacchetti installati e la diagnosi di ogni filo |
+| `texo doctor` | le stesse verifiche della dichiarazione, il token del hub (senza mostrarlo), il hub che risponde e i suoi strumenti che scrivono, i pacchetti installati e la diagnosi di ogni filo |
 | `texo threads` | i fili montati, con tipo, `data_class`, `writes`, stato e `guide`; è anche lo strumento `threads` del server MCP `memoria` |
 | `texo thread <id> ls\|read\|search ...` | legge una fonte `git-remote` al `ref` fissato |
 | `texo seed [--apply --yes]` | il seed dei pacchetti nel hub e i canali `hub_channel` (`docs/memoria.md`, «Seed di un pacchetto») |

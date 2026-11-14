@@ -7,9 +7,12 @@ declared as a thread.
 """
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,6 +30,10 @@ PINNED = re.compile(r"(@|==)v?\d+(\.\d+)*([.-][0-9A-Za-z.-]+)?$")
 REQUIRED = {"git-remote": ("repo", "ref"), "git-mirror": ("repo", "ref"), "http": ("url",),
             "mcp-stdio": ("command",), "mcp-http": ("url",), "cli": ("command", "version")}
 TIMEOUT = 20
+# the handshake of doctor with an MCP server: how long it waits for an answer, how many pages of tools it reads
+MCP_TIMEOUT = 60
+MCP_PAGES = 20
+MCP_PROTOCOL = "2025-06-18"
 
 
 def shared_dir():
@@ -68,7 +75,8 @@ def check(thread):
         error("a connector holds data of the organisation, its customers or the person: data_class org, customer "
               "or personal")
     if kind == "connector" and writes == "never" and driver in ("mcp-stdio", "mcp-http"):
-        warning("a connector the agent can only read: check that its tools cannot write")
+        warning("a connector the agent can only read: texo doctor lists the tools that say they write, and "
+                "nothing stops them at run time")
     if kind == "tool" and data_class == "customer":
         warning("a tool that receives the data of customers: check where they go")
     if not (thread.get("guide") or "").strip():
@@ -263,27 +271,170 @@ def doctor_cli(thread):
 
 # -- mcp ----------------------------------------------------------------------------------------
 
-def mcp_stdio_handshake(command, env=None, cwd=None):
-    """Start an MCP server over stdio, send initialize, read the answer: the server's name or an error."""
-    message = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-               "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                          "clientInfo": {"name": "texo-doctor", "version": "1"}}}
+def events(body):
+    """The JSON-RPC messages of a server-sent events body."""
+    data = []
+    for line in body.splitlines() + [""]:
+        if line.startswith("data:"):
+            data.append(line[5:].strip())
+        elif not line.strip() and data:
+            yield json.loads("\n".join(data))
+            data = []
+
+
+def mcp_session(ask):
+    """What an MCP client does first, through ask (a message in, its answer or None out): initialize, the
+    notification initialized, tools/list page after page. (status, message, tools): the name of the server
+    or the error, and its tools, None when it did not list them."""
+    answer = ask({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                  "params": {"protocolVersion": MCP_PROTOCOL, "capabilities": {},
+                             "clientInfo": {"name": "texo-doctor", "version": "1"}}})
+    if not answer or "result" not in answer:
+        return "error", "the server did not answer initialize", None
+    info = answer["result"].get("serverInfo") or {}
+    message = f"MCP server {info.get('name', '?')} {info.get('version', '')}".strip()
+    ask({"jsonrpc": "2.0", "method": "notifications/initialized"})
+    tools, cursor = [], None
+    for page in range(MCP_PAGES):
+        answer = ask({"jsonrpc": "2.0", "id": 2 + page, "method": "tools/list",
+                      "params": {"cursor": cursor} if cursor else {}})
+        if not answer or not isinstance(answer.get("result"), dict):
+            return "ok", message, None
+        tools += [tool for tool in answer["result"].get("tools") or [] if isinstance(tool, dict)]
+        cursor = answer["result"].get("nextCursor")
+        if not cursor:
+            break
+    return "ok", message, tools
+
+
+def mcp_stdio_tools(command, env=None, cwd=None):
+    """Start an MCP server over stdio and ask it who it is and which tools it has (mcp_session)."""
     try:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                    text=True, env=env, cwd=cwd)
     except OSError as error:
-        return "error", f"{command[0]} cannot start: {error}"
-    try:
-        out, _ = process.communicate(json.dumps(message) + "\n", timeout=60)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        return "error", "no answer to initialize within 60 s"
-    for line in out.splitlines():
+        return "error", f"{command[0]} cannot start: {error}", None
+    lines = queue.Queue()
+
+    def read():
+        for line in process.stdout:
+            lines.put(line)
+        lines.put(None)
+
+    threading.Thread(target=read, daemon=True).start()
+
+    def ask(message):
         try:
-            answer = json.loads(line)
-        except ValueError:
-            continue
-        if answer.get("id") == 1 and "result" in answer:
-            info = answer["result"].get("serverInfo") or {}
-            return "ok", f"MCP server {info.get('name', '?')} {info.get('version', '')}".strip()
-    return "error", "the server did not answer initialize"
+            process.stdin.write(json.dumps(message) + "\n")
+            process.stdin.flush()
+        except OSError:
+            return None
+        deadline = time.monotonic() + MCP_TIMEOUT
+        while "id" in message:
+            try:
+                line = lines.get(timeout=max(0.0, deadline - time.monotonic()))
+            except queue.Empty:
+                return None
+            if line is None:
+                return None
+            try:
+                answer = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(answer, dict) and answer.get("id") == message["id"]:
+                return answer
+        return None
+
+    try:
+        return mcp_session(ask)
+    finally:
+        for pipe in (process.stdin, process.stdout):
+            try:
+                pipe.close()
+            except OSError:
+                pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+def mcp_stdio_handshake(command, env=None, cwd=None):
+    """The name of an MCP server over stdio, or the error: mcp_stdio_tools without the tools."""
+    return mcp_stdio_tools(command, env, cwd)[:2]
+
+
+def mcp_http_tools(url, token=None, opener=None):
+    """Ask an MCP server over Streamable HTTP who it is and which tools it has (mcp_session), with the token
+    as bearer. A real call, not a HEAD: a server that answers a HEAD may still refuse the protocol. A server
+    that wants a login the fabric has no credential for is reachable, and its tools are not listed."""
+    opener = opener or urllib.request.urlopen
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+               "User-Agent": "texo"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    session = {}
+
+    def ask(message):
+        request = urllib.request.Request(url, data=json.dumps(message).encode(), method="POST",
+                                         headers=dict(headers, **session))
+        with opener(request, timeout=TIMEOUT) as response:
+            if response.headers.get("Mcp-Session-Id"):
+                session["Mcp-Session-Id"] = response.headers["Mcp-Session-Id"]
+            body = response.read().decode("utf-8", errors="replace")
+            kind = response.headers.get("Content-Type", "")
+        if "id" not in message or not body.strip():
+            return None
+        answers = events(body) if "text/event-stream" in kind else [json.loads(body)]
+        return next((a for a in answers if isinstance(a, dict) and a.get("id") == message["id"]), None)
+
+    try:
+        return mcp_session(ask)
+    except urllib.error.HTTPError as error:
+        error.close()
+        if error.code in (401, 403) and not token:
+            return "ok", f"{url} answers {error.code}: it wants a login of the assistant", None
+        if error.code in (401, 403):
+            return "error", f"{url} answers {error.code}: the credential is refused", None
+        return "error", f"{url} answers {error.code}", None
+    except (urllib.error.URLError, TimeoutError) as error:
+        return "error", f"{url} not reachable: {getattr(error, 'reason', error)}", None
+    except ValueError:
+        return "error", f"{url} does not answer as an MCP server", None
+
+
+def write_audit(thread, status, message, tools):
+    """What doctor says of an MCP thread once its tools are listed: (status, message). A thread declared
+    writes = "never" is checked against what its tools declare (annotations.readOnlyHint), never against their
+    names: a tool that says it writes is an error, one that says nothing a warning."""
+    if status != "ok":
+        return status, message
+    never = thread.get("writes", "never") == "never"
+    if tools is None:
+        if never:
+            return "warning", f"{message}; its tools were not listed: writes = \"never\" is not checked"
+        return status, message
+    writers, silent = tools_that_write(tools)
+    message = f"{message}; {len(tools)} tools, {len(writers)} that write"
+    if never and writers:
+        return "error", f"{message}: writes = \"never\", but they declare that they write: {', '.join(writers)}"
+    if never and silent:
+        return "warning", f"{message}; writes = \"never\", and these do not say whether they write: {', '.join(silent)}"
+    if silent:
+        message += f", {len(silent)} that do not say"
+    return "ok", message
+
+
+def tools_that_write(tools):
+    """(the names of the tools that declare they write, of those that do not say), sorted. readOnlyHint is
+    the only word of a tool on it: without it the protocol assumes nothing, and neither does doctor."""
+    writers, silent = [], []
+    for tool in tools:
+        annotations = tool.get("annotations")
+        hint = annotations.get("readOnlyHint") if isinstance(annotations, dict) else None
+        if hint is False:
+            writers.append(str(tool.get("name")))
+        elif hint is not True:
+            silent.append(str(tool.get("name")))
+    return sorted(writers), sorted(silent)

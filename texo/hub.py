@@ -24,7 +24,7 @@ import tempfile
 import urllib.error
 import urllib.request
 
-from . import __version__
+from . import __version__, threads
 
 TIMEOUT = 60
 WRITE_TOOLS = ("task_note", "note", "note_append", "note_update", "fact", "fact_append", "fact_update", "lesson", "update", "state", "log_time",
@@ -56,6 +56,11 @@ class Hub:
         self.generated_by = None
         # the threads of the fabric, as texo mount left them (.texo/threads.json)
         self.threads = []
+
+    def tools(self):
+        """(status, message, tools) of the MCP server of the hub, asked as the person: what the hub itself
+        says of its tools (threads.mcp_http_tools)."""
+        return threads.mcp_http_tools(f"{self.url}/texo/mcp", self.token, self.opener)
 
     def call(self, route, payload=None):
         """POST a json2 route as the person; the answer or a HubError with Odoo's message."""
@@ -862,7 +867,9 @@ def handle_message(hub, message):
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": tool_schemas()}
+        # readOnlyHint says which tools write, so a client need not guess it from a name
+        result = {"tools": [dict(tool, annotations={"readOnlyHint": tool["name"] not in WRITE_TOOLS})
+                            for tool in tool_schemas()]}
     elif method == "tools/call":
         text, is_error = call_tool(hub, params.get("name"), params.get("arguments"))
         result = {"content": [{"type": "text", "text": text}], "isError": is_error}
