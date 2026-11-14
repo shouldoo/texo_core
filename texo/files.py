@@ -10,7 +10,8 @@ from pathlib import Path
 
 def write_text(path, text, mode=None):
     """Write text to path if it is not already there; True when the file was written. A link is followed: the
-    file it leads to is the one replaced. mode, for a file that holds a profile, is set either way."""
+    file it leads to is the one replaced. mode, for a file that holds a profile or a token, is set either way,
+    and the file is never readable by others even while it is written."""
     path = Path(path)
     target = Path(os.path.realpath(path)) if path.is_symlink() else path
     try:
@@ -21,8 +22,12 @@ def write_text(path, text, mode=None):
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
         try:
-            temporary.write_text(text, encoding="utf-8")
-            if target.exists():
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666 if mode is None else mode)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(text)
+            if mode is not None:
+                os.chmod(temporary, mode)
+            elif target.exists():
                 os.chmod(temporary, target.stat().st_mode & 0o7777)
             os.replace(temporary, target)
         finally:

@@ -168,7 +168,20 @@ class Fabric:
         url = self.texo.get("hub_url")
         if not url:
             raise ConfigError(f"{self.root / FILE}: [texo] hub_url is missing")
+        from . import environment  # environment reads the configuration: imported here, not at the top
+        if environment.has_key(self.organisation):
+            # a machine with a key of its own proves it and holds a short-lived token: no other is used
+            return url, environment.token(url, self.organisation)
         return url, self.secret(self.texo.get("hub_token") or "env:TEXO_HUB_TOKEN")
+
+    def renewal(self):
+        """How a client that lives longer than its token gets another: a function of the token the hub just
+        refused, or None where the token is a long-lived one the person keeps."""
+        from . import environment
+        url = self.texo.get("hub_url")
+        if not url or not environment.has_key(self.organisation):
+            return None
+        return lambda stale: environment.token(url, self.organisation, stale=stale)
 
 
 def hub_settings(start=None):

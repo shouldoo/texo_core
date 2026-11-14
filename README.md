@@ -37,6 +37,12 @@ texo init https://memoria.example.org acme   # texo.toml, assistant trust, then 
 texo doctor                                  # the hub, every pack, thread and credential
 ```
 
+Where the hub keeps a registry of environments and the machine has no token of the person, `texo init` gives the
+machine a key of its own instead (ssh-keygen, ed25519), prints its fingerprint and an address of the hub, and waits
+for the person to confirm it in the browser, logged in as themselves. From then on the CLI and the MCP server prove
+the key at every session and hold a token that expires in hours and renews itself: no long-lived token ever exists
+on the machine (`docs/fili.md`, «La chiave della macchina»).
+
 `texo.toml` holds only the hub and the name of the organisation:
 
 ```toml
@@ -128,6 +134,7 @@ and an expiry.
 | `init <hub url> <organisation>` | writes `texo.toml`, trusts the folder and its MCP server `memoria` for Claude Code (the MCP servers of the threads wait for the approval of the person; and an Antigravity profile when `agy` is installed), then mounts |
 | `mount [--yes] [--offline]` | reads the configuration of the hub; installs the packs; checks their versions, the core they need and every thread; clones the git-mirror sources (only their `paths` when declared); installs pinned CLIs (with `--yes`); writes the MCP configuration of Claude Code, Gemini CLI and the Antigravity profile; links the skills of core, threads, packs and folder; creates the working folders of the packs; writes `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.texo/THREADS.md` |
 | `doctor` | checks the hub, every pack, thread and credential, without showing a credential; asks every MCP thread for its tools and says which declare that they write on a thread declared `writes = "never"` |
+| `environment [status\|register] [--wait SECONDS]` | the key of this machine for the hub: whether it has one and what the hub says of it; `register` makes the key, prints the fingerprint and the address the person opens to confirm it, and waits |
 | `threads` | the threads of the folder (also the tool `threads` of the MCP server `memoria`) |
 | `thread <id> ls\|read\|search` | reads a git-remote source at its pinned ref, without cloning it |
 | `seed [--apply --yes]` | the `seed.toml` of every pack into the hub (route `admin/seed`, administrators): a dry run, then the writes |

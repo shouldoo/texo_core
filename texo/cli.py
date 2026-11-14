@@ -19,18 +19,27 @@ import base64
 import json
 import os
 import sys
+import time
 import tomllib
 from pathlib import Path
 
-from . import bridge, hooks, hub, mount, packs, seed, setup_assistants, threads
+from . import bridge, environment, hooks, hub, mount, packs, seed, setup_assistants, threads
 from .config import ConfigError, Fabric, find_root, hub_settings, write_texo_toml
 
-LOCAL = ("init", "mount", "doctor", "threads", "thread", "run-thread", "version", "where", "hook")
+LOCAL = ("init", "mount", "doctor", "threads", "thread", "run-thread", "version", "where", "hook", "environment")
+# how long texo init waits for the person to confirm the machine in the browser, and how often it asks
+CONFIRM_WAIT, CONFIRM_EVERY = 300, 5
 
 
 def extend(sub):
     p = sub.add_parser("init", help="make the current folder a working folder of the organisation, then mount")
     p.add_argument("hub_url")
+    p.add_argument("--wait", type=int, default=None, metavar="SECONDS",
+                   help="how long to wait for the confirmation of the machine in the browser (default: 300 in a "
+                        "terminal, 0 otherwise)")
+    e = sub.add_parser("environment", help="the key of this machine for the hub: its state, or register it")
+    e.add_argument("action", nargs="?", choices=("status", "register"), default="status")
+    e.add_argument("--wait", type=int, default=None, metavar="SECONDS")
     p.add_argument("organisation", help="the slug of the organisation: ~/.config/texo/<slug>.env")
     p = sub.add_parser("mount", help="the configuration of the hub: packs, threads, assistants, skills, AGENTS.md")
     p.add_argument("--yes", action="store_true", help="run the install commands of the cli threads")
@@ -67,6 +76,64 @@ def fabric_of(args):
     return Fabric(root)
 
 
+def register_environment(fabric, out, wait=None, sleep=time.sleep):
+    """Give this machine a key for the organisation, if it has none, and tell the person how to register it:
+    the fingerprint to compare and the address to open, logged in as themselves. Then wait for the confirmation
+    (and, where the organisation asks, for a lead). True once the hub gives the machine a token."""
+    organisation, url = fabric.organisation, fabric.texo.get("hub_url")
+    if not environment.has_key(organisation):
+        environment.create_key(organisation)
+        out.write(f"[ok] a key for this machine: {environment.key_path(organisation)} (it never leaves it)\n")
+    print_, address = environment.describe(url, organisation)
+    try:
+        environment.told_by_hub(url, organisation)
+        out.write(f"[ok] environment {print_}: registered and authorized\n")
+        return True
+    except hub.HubError as error:
+        if error.status != 403:
+            raise
+    out.write("Register this machine: open the address below, log in to the hub as yourself, check that the\n"
+              f"fingerprint is {print_}, and confirm.\n\n  {address}\n\n")
+    wait = (CONFIRM_WAIT if out.isatty() else 0) if wait is None else wait
+    if wait > 0:
+        out.write(f"Waiting for the confirmation, up to {wait} seconds...\n")
+        out.flush()
+    for _ in range(max(0, wait) // CONFIRM_EVERY):
+        sleep(CONFIRM_EVERY)
+        try:
+            environment.told_by_hub(url, organisation)
+        except hub.HubError as error:
+            if error.status not in (403, 429):
+                raise
+            continue
+        out.write("[ok] environment registered and authorized\n")
+        return True
+    out.write("[info] not authorized yet (your confirmation, and where the organisation asks a lead's): "
+              "texo mount once it is\n")
+    return False
+
+
+def environment_status(fabric, out):
+    """Whether this machine has a key for the organisation, and what the hub says of it."""
+    organisation, url = fabric.organisation, fabric.texo.get("hub_url")
+    if not environment.has_key(organisation):
+        out.write("[info] this machine has no key for the hub: it uses the token of the person "
+                  "(texo environment register gives it one)\n")
+        return 0
+    print_, address = environment.describe(url, organisation)
+    out.write(f"[ok] key {print_}\n")
+    try:
+        told = environment.told_by_hub(url, organisation)
+    except hub.HubError as error:
+        if error.status != 403:
+            raise
+        out.write(f"[warning] not registered, not authorized yet, or revoked: open\n  {address}\n")
+        return 1
+    out.write(f"[ok] environment {told.get('environment') or '?'}: {told.get('state')}, token until "
+              f"{told.get('expires')} UTC\n")
+    return 0
+
+
 def local(args, out, err):
     if args.command == "version":
         from . import __version__
@@ -82,7 +149,19 @@ def local(args, out, err):
         write_texo_toml(root, args.organisation, args.hub_url)
         out.write(f"[ok] {root / 'texo.toml'}\n")
         setup_assistants.trust(root, args.organisation, out)
-        return mount.mount(Fabric(root), out=out)
+        fabric = Fabric(root)
+        if not fabric.has_secret(fabric.texo.get("hub_token") or "env:TEXO_HUB_TOKEN"):
+            # no token of the person on this machine: it gets a key of its own, registered from the browser
+            try:
+                register_environment(fabric, out, args.wait)
+            except (ConfigError, hub.HubError) as error:
+                out.write(f"[warning] environment: {error}\n")
+        return mount.mount(fabric, out=out)
+    if args.command == "environment":
+        fabric = fabric_of(args)
+        if args.action == "register":
+            return 0 if register_environment(fabric, out, args.wait) else mount.FROM_CACHE
+        return environment_status(fabric, out)
     if args.command == "where" and not args.pack:
         out.write(f"{Path(__file__).resolve().parent.parent}\n")
         return 0
@@ -160,7 +239,9 @@ def connect(args):
     client = hub.Hub(url, token)
     root = find_root(args.root)
     if root:
-        client.threads = mount.load_state(Fabric(root)).get("threads", [])
+        fabric = Fabric(root)
+        client.threads = mount.load_state(fabric).get("threads", [])
+        client.renew = fabric.renewal()
     return client
 
 

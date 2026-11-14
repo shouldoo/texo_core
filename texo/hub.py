@@ -56,6 +56,9 @@ class Hub:
         self.opener = opener or urllib.request.urlopen
         # the agent that writes through this client, as <producer>/<version> (OKF generated.by)
         self.generated_by = None
+        # how to get another token when this one is refused (config.Fabric.renewal): the MCP server lives
+        # longer than the short-lived token of an environment
+        self.renew = None
         # the threads of the fabric, as texo mount left them (.texo/threads.json)
         self.threads = []
 
@@ -79,8 +82,9 @@ class Hub:
         says of its tools (threads.mcp_http_tools)."""
         return threads.mcp_http_tools(f"{self.url}/texo/mcp", self.token, self.opener)
 
-    def call(self, route, payload=None):
-        """POST a json2 route as the person; the answer or a HubError with Odoo's message."""
+    def call(self, route, payload=None, renewed=False):
+        """POST a json2 route as the person; the answer or a HubError with Odoo's message. A token that is
+        refused is renewed once, where the client knows how."""
         request = urllib.request.Request(
             f"{self.url}/texo/v1/{route}", method="POST",
             data=json.dumps(payload or {}).encode(),
@@ -95,6 +99,9 @@ class Hub:
                 message = json.loads(body).get("message") or body
             except ValueError:
                 message = body
+            if error.code == 401 and self.renew and not renewed:
+                self.token = self.renew(self.token)
+                return self.call(route, payload, renewed=True)
             if error.code == 401:
                 message = "the token is invalid or expired: create a new one in Odoo (Preferences, Security, New API Key, scope Texo)"
             raise HubError(error.code, (message or "").strip()[:500]) from None

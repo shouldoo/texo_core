@@ -187,6 +187,34 @@ Il hub e `texo.toml` portano solo il nome di una credenziale (`env:NOME`). Il va
 viene rifiutato. Nessun file di configurazione degli assistenti contiene un token: ogni filo MCP vi è scritto
 come `texo run-thread <id>`, che risolve le credenziali all'avvio.
 
+### La chiave della macchina
+
+Un token in un file funziona da qualsiasi macchina su cui viene copiato. Dove il hub tiene l'anagrafe degli
+ambienti (`texo` dalla 20.0.1.7.0), la macchina ha invece una coppia di chiavi sua, e nessun token di lunga
+durata esiste mai su di essa:
+
+1. `texo init` (o `texo environment register` in una cartella che c'è già) genera con `ssh-keygen` una coppia
+   ed25519 accanto al file delle credenziali dell'organizzazione (`<organisation>.key`, modo 600, e
+   `<organisation>.key.pub`), e stampa l'impronta e un indirizzo del hub.
+2. La persona apre l'indirizzo, entra nel hub come sé stessa, confronta l'impronta con quella del terminale e
+   conferma. Dove l'organizzazione lo chiede, un lead autorizza l'ambiente. `texo init` aspetta la conferma
+   fino a cinque minuti (`--wait`), poi monta.
+3. Da lì in poi la CLI e il server MCP `memoria` firmano una sfida del hub con la chiave privata e ricevono un
+   token che scade in ore, tenuto in `<organisation>.token` (modo 600, scritto in un colpo solo). Il token si
+   rinnova da sé quando sta per scadere o quando il hub lo rifiuta: un assistente con una sessione aperta più
+   a lungo del token non perde il server, perché è il server a chiedere il token nuovo, non l'assistente.
+
+Una macchina con la chiave usa solo quella: `TEXO_HUB_TOKEN`, se c'è, non è più letto. Una cartella senza
+chiave continua a usare il token della persona, come prima. `texo environment` dice quale delle due vale e che
+cosa ne dice il hub; `texo doctor` mostra nome, stato e scadenza dell'ambiente, e segnala se manca `ssh-keygen`
+(OpenSSH 8.1 o successivo), che è la sola dipendenza nuova della macchina: il core resta alla libreria standard.
+
+Limiti. Una chiave privata in un file si copia come un token: chi ha accesso alla macchina può clonare
+l'ambiente, e il hub non se ne accorge. L'anagrafe dà una revoca per macchina e un segreto di lunga durata che
+non viaggia mai, non la prova che la macchina sia la stessa. Lo impedirebbe solo una chiave su un dispositivo
+hardware o in un agente di chiavi, che il hub oggi non accetta. Il nome della macchina mandato alla
+registrazione è una dichiarazione.
+
 ## Driver
 
 I driver sono modi di collegarsi, non software: qualunque server MCP, CLI, repository o URL si monta con quelli
