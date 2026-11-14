@@ -832,6 +832,118 @@ class TestMountAgain(FabricCase):
         self.assertIn("the configuration read on", out)
 
 
+class TestGuest(FabricCase):
+    """A working folder that is the guest of a repository with its own rules: no tracked file is touched, git
+    status stays as it was, the rules of the core reach the agent from the hook of the start of a session."""
+
+    def host(self, **more):
+        """Make the folder a repository with its own files, committed."""
+        own = {"AGENTS.md": "# The rules of the project\nDo not touch.\n", "CLAUDE.md": "# The project\n",
+               ".gitignore": "node_modules/\n", "src/a.py": "x = 1\n", **more}
+        git("init", "--quiet", cwd=self.root)
+        for name, text in own.items():
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / name).write_text(text)
+        git("add", "--", *own, cwd=self.root)
+        git("commit", "--quiet", "-m", "the project", cwd=self.root)
+        return own
+
+    def status(self):
+        return subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=self.root,
+                              capture_output=True, text=True, check=True).stdout
+
+    def start(self, **payload):
+        from texo import hooks
+        out = io.StringIO()
+        code = hooks.run("session-start", stdin=io.StringIO(json.dumps(payload)), out=out, root=self.root)
+        return code, out.getvalue()
+
+    def test_a_guest_touches_no_tracked_file_and_leaves_git_status_empty(self):
+        own = self.host()
+        self.assertTrue(mount.is_guest(self.fabric()))
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.status(), "", "nothing to commit, nothing untracked: texo.toml is excluded too")
+        for name, text in own.items():
+            self.assertEqual((self.root / name).read_text(), text, name)
+        exclude = (self.root / ".git" / "info" / "exclude").read_text().splitlines()
+        self.assertTrue({"texo.toml", ".texo/", ".mcp.json", ".agents/hooks.json", ".agents/skills/"} <= set(exclude))
+        for name in ("AGENTS.md", "ARCHITECTURE.md", "DESIGN.md", "THREADS.md"):
+            self.assertTrue((self.root / ".texo" / name).is_file(), name)
+        self.assertIn(mount.GENERATED, (self.root / ".texo" / "AGENTS.md").read_text())
+        self.assertIn("Modo ospite", (self.root / ".texo" / "ARCHITECTURE.md").read_text())
+        for name in ("ARCHITECTURE.md", "DESIGN.md", "GEMINI.md"):
+            self.assertFalse((self.root / name).exists(), f"{name} is not written at the root of a guest")
+        self.assertIn("guest of a repository", out)
+        self.mount()
+        self.assertEqual(self.status(), "")
+        self.assertEqual(exclude, (self.root / ".git" / "info" / "exclude").read_text().splitlines(), "added once")
+
+    def test_the_start_of_a_session_tells_the_agent_where_the_rules_are(self):
+        self.host()
+        self.mount()
+        command = f"{mount.texo_command(self.fabric())} --root {self.root} hook session-start"
+        settings = json.loads((self.root / ".claude" / "settings.local.json").read_text())
+        self.assertEqual([h["command"] for entry in settings["hooks"]["SessionStart"] for h in entry["hooks"]], [command])
+        hooks_file = json.loads((self.root / ".agents" / "hooks.json").read_text())
+        self.assertEqual(hooks_file["texo-rules"], {"SessionStart": [{"type": "command", "command": command}]})
+        self.assertFalse(mount.check_hooks_file(self.fabric()))
+        # one assistant takes the text as it is, the other a step to inject: told apart by what they send
+        code, text = self.start(session_id="abc", hook_event_name="SessionStart")
+        self.assertEqual(code, 0)
+        for name in ("AGENTS.md", "ARCHITECTURE.md", "DESIGN.md", "THREADS.md"):
+            self.assertIn(str(self.root / ".texo" / name), text)
+        self.assertIn("vale la più prudente", text)
+        code, steps = self.start(conversationId="abc", workspacePaths=[str(self.root)])
+        injected = json.loads(steps)
+        self.assertEqual(list(injected), ["injectSteps"])
+        self.assertEqual(injected["injectSteps"][0]["systemMessage"]["systemMessage"] + "\n", text)
+        # the command the assistants run, as they run it
+        ran = subprocess.run([sys.executable, "-m", "texo", "--root", str(self.root), "hook", "session-start"],
+                             input="{}", capture_output=True, text=True, env=dict(os.environ, PYTHONPATH=str(CORE)))
+        self.assertEqual((ran.returncode, ran.stdout), (0, text))
+
+    def test_a_folder_that_is_not_a_guest_says_nothing_at_the_start_of_a_session(self):
+        self.mount()
+        self.assertFalse(mount.is_guest(self.fabric()))
+        self.assertEqual(self.start(session_id="abc"), (0, ""))
+        self.assertNotIn("SessionStart", json.loads((self.root / ".claude" / "settings.local.json").read_text())["hooks"])
+        self.assertNotIn("texo-rules", json.loads((self.root / ".agents" / "hooks.json").read_text()))
+        # a repository whose AGENTS.md mount wrote is not a guest either
+        git("init", "--quiet", cwd=self.root)
+        self.assertFalse(mount.is_guest(self.fabric()))
+        self.assertTrue(mount.report(mount.check_hooks(type("F", (), {"remote": {}, "hooks": [
+            {"id": "texo-rules", "event": "Stop", "command": "true"}]})()), io.StringIO()), "the id is reserved")
+
+    def test_a_guest_that_stops_being_one_gets_the_rules_at_the_root_again(self):
+        self.host()
+        self.mount()
+        (self.root / "AGENTS.md").unlink()
+        (self.root / "CLAUDE.md").unlink()
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        self.assertIn(mount.GENERATED, (self.root / "AGENTS.md").read_text())
+        self.assertFalse((self.root / ".texo" / "AGENTS.md").exists())
+        self.assertEqual(self.start(session_id="abc"), (0, ""))
+        self.assertNotIn("SessionStart", json.loads((self.root / ".claude" / "settings.local.json").read_text())["hooks"])
+        self.assertNotIn("texo-rules", json.loads((self.root / ".agents" / "hooks.json").read_text()))
+
+    def test_what_the_repository_tracks_is_left_as_it_is(self):
+        servers = json.dumps({"mcpServers": {"theirs": {"command": "x"}}})
+        self.host(**{".mcp.json": servers, ".agents/skills/texo-sessione": "a file of theirs with the name of a skill\n"})
+        (self.root / ".claude" / "skills").mkdir(parents=True)
+        (self.root / ".claude" / "skills" / "theirs").symlink_to("../../src")
+        git("add", ".claude/skills/theirs", cwd=self.root)
+        git("commit", "--quiet", "-m", "a link of theirs", cwd=self.root)
+        code, out = self.mount()
+        self.assertEqual(code, 0, out)
+        self.assertEqual((self.root / ".mcp.json").read_text(), servers)
+        self.assertIn("[warning] Claude Code: .mcp.json is tracked by the repository, left as it is", out)
+        self.assertEqual(os.readlink(self.root / ".claude" / "skills" / "theirs"), "../../src")
+        self.assertTrue((self.root / ".agents" / "skills" / "texo-sessione").is_file())
+        self.assertEqual(self.status(), "")
+
+
 # an MCP server over stdio with three tools on two pages: one that reads, one that writes, one that does not
 # say. It lists nothing before the notification initialized, as a strict server does.
 FAKE_MCP = r"""

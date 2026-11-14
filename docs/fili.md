@@ -56,6 +56,29 @@ stesso `id` di un filo del hub lo sostituisce su quella cartella. `texo mount` l
   canonico, calcolata dal core, senza il giorno di lettura), il giorno (`config_read`) e la versione del core.
   Quando l'impronta è quella dell'ultimo mount lo dice («as at the last mount»).
 
+### Modo ospite
+
+Una cartella di lavoro può essere il repository di un progetto che ha già le sue regole: un repository git con
+un `AGENTS.md` che `texo mount` non ha scritto. Lì il mount è un ospite:
+
+- non tocca nessun file che il repository traccia, e non aggiunge nulla al suo `.gitignore`: ciò che genera è
+  escluso nel file di esclusione del repository (`.git/info/exclude`), `texo.toml` compreso, così
+  `git status` resta com'era;
+- scrive `AGENTS.md`, `ARCHITECTURE.md` e `DESIGN.md` del core in `.texo/`, accanto a `THREADS.md`, e nessun
+  `CLAUDE.md` o `GEMINI.md`;
+- aggiunge un hook di avvio sessione (`texo hook session-start`) che dice all'agente dove sono quei file e che
+  valgono insieme alle regole del repository, la più prudente dove differiscono. L'hook risponde nella forma
+  che l'assistente accetta: testo, oppure un passo da iniettare per l'assistente che legge
+  `.agents/hooks.json`;
+- un file che scriverebbe e che il repository traccia (`.mcp.json`, per esempio) resta com'è, con un avviso:
+  per quell'assistente manca ciò che il mount ci avrebbe messo.
+
+Il modo ospite porta le regole solo dove un hook di avvio sessione le porta: è provato per l'assistente che
+legge `.claude/settings.local.json` (il testo dell'hook entra nel contesto) e per quello che legge
+`.agents/hooks.json`. Per un assistente senza quell'hook le regole del core non arrivano: lì il modo ospite
+non è supportato, e le regole vanno collegate a mano dal file che l'assistente legge. Quando l'`AGENTS.md` del
+repository non c'è più, il mount torna a scrivere i file alla radice e toglie l'hook.
+
 La dichiarazione è la stessa nei due posti; in `texo.toml`:
 
 ```toml

@@ -119,8 +119,8 @@ def check_hooks(fabric):
         problems.append(("error", f"hook {duplicate} declared twice"))
     for hook in fabric.hooks:
         hid = hook.get("id") or "?"
-        if hid == NOTE_HOOK:
-            problems.append(("error", f"hook {hid}: this id is the one of the hook of the session note"))
+        if hid in (NOTE_HOOK, RULES_HOOK):
+            problems.append(("error", f"hook {hid}: this id is the one of a hook texo mount writes"))
         if not threads.ID.match(hook.get("id") or ""):
             problems.append(("error", f"hook {hid}: id is one lowercase word (letters, digits, - or _)"))
         if hook.get("event") not in ASSISTANT_EVENTS:
@@ -197,6 +197,26 @@ def mcp_servers(fabric, assistant):
     return servers
 
 
+def is_guest(fabric):
+    """Whether the folder is the guest of a repository: a git repository with an AGENTS.md mount did not write.
+    There mount touches no file the repository tracks and adds nothing to its .gitignore: what it generates is
+    excluded in the repository's own exclude file, the rules of the core go to .texo/, and the hook of the
+    start of a session tells the agent where they are."""
+    rules = fabric.root / "AGENTS.md"
+    if not (fabric.root / ".git").exists() or not rules.is_file():
+        return False
+    return GENERATED not in rules.read_text(encoding="utf-8", errors="replace")
+
+
+def tracked_paths(fabric):
+    """The paths mount writes that the repository of a guest folder tracks: they are the repository's, mount
+    leaves them as they are. Empty when the folder is not a guest."""
+    if not is_guest(fabric):
+        return set()
+    result = threads.run(["git", "ls-files", "--", ".mcp.json", ".claude", ".gemini", ".agents"], cwd=fabric.root)
+    return set(result.stdout.split("\n")) - {""} if result.returncode == 0 else set()
+
+
 def merge_json(path, update, mode=None):
     """Merge into a JSON file, never dropping what the person set; mode for files that hold a profile."""
     path = Path(path)
@@ -218,6 +238,8 @@ HOOKS_FILE = ".agents/hooks.json"
 # there: only those the assistant that reads the file is known to raise and to take in this form
 NOTE_HOOK = "texo-note"
 NOTE_HOOK_EVENTS = (("Stop", "stop"),)
+# the key, there, of the hook that tells the agent where the rules are in a folder mounted as a guest
+RULES_HOOK = "texo-rules"
 # the events of HOOKS_FILE that are about a tool: their entry is {matcher, hooks: [command]}. The entry of every
 # other event is the command itself: an assistant that reads the file refuses all of it, and loads no hook, when
 # it finds the nested form there
@@ -277,6 +299,7 @@ def hooks_update(fabric):
                    for h in entry.get("hooks", []) if isinstance(h, dict))
 
     declared = declared_hooks(fabric)
+    guest = is_guest(fabric)
     # the commands of the hooks mount wrote last time and writes now: replaced, never doubled
     written = {h.get("command") for h in load_state(fabric).get("hooks", [])} | {h["command"] for h in declared}
 
@@ -289,11 +312,17 @@ def hooks_update(fabric):
             hooks[event] = [entry for entry in hooks[event] if not (isinstance(entry, dict) and mine(entry))]
             if not hooks[event]:
                 del hooks[event]
-        for event, argument in HOOK_EVENTS:
+        # in a guest folder the start of a session is where the rules of the core reach the agent
+        events = HOOK_EVENTS + ((("SessionStart", "session-start"),) if guest else ())
+        for event, argument in events + (() if guest else (("SessionStart", None),)):
             kept = [entry for entry in hooks.get(event, []) if isinstance(entry, dict) and not ours(entry)]
-            kept.append({"hooks": [{"type": "command",
-                                    "command": f"{command} --root {fabric.root} hook {argument}"}]})
-            hooks[event] = kept
+            if argument:
+                kept.append({"hooks": [{"type": "command",
+                                        "command": f"{command} --root {fabric.root} hook {argument}"}]})
+            if kept:
+                hooks[event] = kept
+            else:
+                hooks.pop(event, None)
         for hook in declared:
             hooks.setdefault(hook["event"], []).append(hook_entry(hook))
     return apply
@@ -307,14 +336,17 @@ def write_hooks_file(fabric, out):
     command = f"{texo_command(fabric)} --root {fabric.root}"
 
     def apply(data):
-        for hid in previous:
+        for hid in [*previous, RULES_HOOK]:
             data.pop(hid, None)
         data[NOTE_HOOK] = {event: [{"type": "command", "command": f"{command} hook {argument}"}]
                            for event, argument in NOTE_HOOK_EVENTS}
+        if is_guest(fabric):
+            data[RULES_HOOK] = {"SessionStart": [{"type": "command", "command": f"{command} hook session-start"}]}
         for hook in declared:
             data[hook["id"]] = {hook["event"]: [hooks_file_entry(hook)]}
     merge_json(fabric.root / HOOKS_FILE, apply)
-    out.write(f"[ok] {HOOKS_FILE}: {', '.join([NOTE_HOOK] + [h['id'] for h in declared])}\n")
+    names = [NOTE_HOOK] + ([RULES_HOOK] if is_guest(fabric) else []) + [h["id"] for h in declared]
+    out.write(f"[ok] {HOOKS_FILE}: {', '.join(names)}\n")
 
 
 def write_assistants(fabric, out):
@@ -329,13 +361,26 @@ def write_assistants(fabric, out):
                 servers[name] = entry(server)
         return apply
 
-    merge_json(fabric.root / ".mcp.json", update("mcpServers", "claude"))
-    out.write("[ok] Claude Code: .mcp.json\n")
-    merge_json(fabric.root / ".claude" / "settings.local.json", hooks_update(fabric))
-    out.write("[ok] Claude Code: .claude/settings.local.json (hooks)\n")
-    write_hooks_file(fabric, out)
-    merge_json(fabric.root / ".gemini" / "settings.json", update("mcpServers", "gemini", entry=dict))
-    out.write("[ok] Gemini CLI: .gemini/settings.json\n")
+    tracked = tracked_paths(fabric)
+
+    def ours(name, label):
+        """Whether mount may write the file: one the repository of a guest folder tracks is left as it is."""
+        if name in tracked:
+            out.write(f"[warning] {label}: {name} is tracked by the repository, left as it is: what mount would "
+                      "write there is missing for that assistant\n")
+        return name not in tracked
+
+    if ours(".mcp.json", "Claude Code"):
+        merge_json(fabric.root / ".mcp.json", update("mcpServers", "claude"))
+        out.write("[ok] Claude Code: .mcp.json\n")
+    if ours(".claude/settings.local.json", "Claude Code"):
+        merge_json(fabric.root / ".claude" / "settings.local.json", hooks_update(fabric))
+        out.write("[ok] Claude Code: .claude/settings.local.json (hooks)\n")
+    if ours(HOOKS_FILE, "hooks"):
+        write_hooks_file(fabric, out)
+    if ours(".gemini/settings.json", "Gemini CLI"):
+        merge_json(fabric.root / ".gemini" / "settings.json", update("mcpServers", "gemini", entry=dict))
+        out.write("[ok] Gemini CLI: .gemini/settings.json\n")
     profile = Path(os.environ.get("TEXO_AGY_PROFILE", f"~/.antigravity-texo-{fabric.organisation}")).expanduser()
     if profile.is_dir():
         merge_json(profile / ".gemini" / "config" / "mcp_config.json", update("mcpServers", "antigravity", entry=dict),
@@ -375,12 +420,15 @@ def link_skills(fabric, out):
     found, shadowed = skill_sources(fabric)
     for message in shadowed:
         out.write(f"[info] {message}\n")
+    tracked = tracked_paths(fabric)
     for folder in SKILL_DIRS:
         target_dir = fabric.root / folder
         target_dir.mkdir(parents=True, exist_ok=True)
         wanted = {name: os.path.relpath(source, target_dir) for name, (_layer, source) in found.items()}
         for entry in target_dir.iterdir():
-            if entry.is_symlink() and wanted.get(entry.name) != os.readlink(entry):
+            # a link the repository of a guest folder tracks is the repository's
+            if (entry.is_symlink() and wanted.get(entry.name) != os.readlink(entry)
+                    and f"{folder}/{entry.name}" not in tracked):
                 entry.unlink(missing_ok=True)
         for name, source in wanted.items():
             link = target_dir / name
@@ -428,12 +476,24 @@ def work_dirs(fabric):
     return folders
 
 
+def exclude_file(fabric):
+    """The file of a repository that keeps paths out of git without being versioned itself."""
+    result = threads.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=fabric.root)
+    path = result.stdout.strip() if result.returncode == 0 else ""
+    return (fabric.root / path) if path else fabric.root / ".git" / "info" / "exclude"
+
+
 def ignore_generated(fabric, out):
-    """The files mount generates and the working folders stay out of git: the missing lines go to .gitignore."""
-    path = fabric.root / ".gitignore"
+    """The files mount generates and the working folders stay out of git: the missing lines go to .gitignore,
+    or, in a guest folder, to the exclude file of the repository, with texo.toml, so that no tracked file
+    changes and git status stays as it was."""
+    guest = is_guest(fabric)
+    path = exclude_file(fabric) if guest else fabric.root / ".gitignore"
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
     wanted = list(IGNORED) + [f"{folder}/" for folder in work_dirs(fabric)]
     wanted.append(HOOKS_FILE)
+    if guest:
+        wanted.append("texo.toml")
     # the files of the assistants mount wrote; those the person wrote are theirs to version
     wanted += [name for name in AGENT_FILES + POINTERS if (fabric.root / name).is_file()
                and GENERATED in (fabric.root / name).read_text(encoding="utf-8")]
@@ -441,7 +501,8 @@ def ignore_generated(fabric, out):
     if missing:
         block = ["", "# generated by texo mount"] if lines else ["# generated by texo mount"]
         files.write_text(path, "\n".join(lines + block + missing) + "\n")
-        out.write(f"[ok] .gitignore: {', '.join(missing)}\n")
+        name = os.path.relpath(path, fabric.root) if guest else ".gitignore"
+        out.write(f"[ok] {name}: {', '.join(missing)}\n")
 
 
 def load_state(fabric):
@@ -535,6 +596,10 @@ def this_folder(fabric, core, skills):
         lines.append("- Cartelle di lavoro dei pacchetti, fuori da git: " + ", ".join(f"`{f}/`" for f in folders) + ".")
     if (fabric.root / LOCAL_RULES).is_file():
         lines.append(f"- Regole proprie della cartella: `{LOCAL_RULES}`, della persona, mai scritto da `texo mount`.")
+    if is_guest(fabric):
+        lines.append("- Modo ospite: la cartella è un repository con le sue regole (`AGENTS.md`), che `texo mount` "
+                     "non tocca. Questo file e gli altri generati stanno in `.texo/`; l'hook di avvio sessione dice "
+                     "all'agente dove sono.")
     if fabric.hooks:
         declared = ", ".join(f"`{h['id']}` ({h['event']})" for h in fabric.hooks)
         lines.append(f"- Hook dichiarati in `texo.toml`: {declared}.")
@@ -605,7 +670,20 @@ def agent_files(fabric):
 
 
 def write_agent_files(fabric, out):
-    for name, content in agent_files(fabric).items():
+    """The files the assistants read. In a guest folder (is_guest) the repository has its own: the three files
+    of the core go to .texo/, no pointer is written, and the hook of the start of a session tells the agent
+    where they are (hooks.session_start)."""
+    generated = agent_files(fabric)
+    if is_guest(fabric):
+        for name in AGENT_FILES:
+            files.write_text(fabric.state_dir / name, generated[name])
+        out.write(f"[ok] guest of a repository with its own AGENTS.md: {', '.join(AGENT_FILES)} in .texo/, given "
+                  "to the agent by the hook of the start of a session; no tracked file is touched\n")
+        return
+    for name in AGENT_FILES:
+        # what a mount as a guest left: here the rules are at the root, and the hook has nothing to say
+        (fabric.state_dir / name).unlink(missing_ok=True)
+    for name, content in generated.items():
         path = fabric.root / name
         if path.exists() and GENERATED not in path.read_text(encoding="utf-8"):
             out.write(f"[info] {name} is yours, left as it is: make it lead to the rules of the core "

@@ -50,7 +50,8 @@ hub_token = "env:TEXO_HUB_TOKEN"             # never the value
 The packs (with their versions) and the threads come from the hub: administrators edit them in Odoo (*Settings >
 Users > Texo Skill Packs*, *Texo Threads*) or through the route `admin/config`. `texo mount` reads them (route
 `config`, kept in `.texo/config.json`; `--offline` uses that copy; when the hub does not accept a connection
-within 5 seconds that copy is used and the exit code is 3) and adds the `[[pack]]` and `[[thread]]` of
+within 5 seconds that copy is used and the exit code is 3; in a git repository with its own `AGENTS.md` it mounts
+as a guest, touching no tracked file: `docs/fili.md`, «Modo ospite») and adds the `[[pack]]` and `[[thread]]` of
 `texo.toml`, which replace the hub's entry with the same name or id. A `[[pack]]` with `path` (the folder of a pack
 under development on this machine, with the version its `pack.toml` carries) is used as it is, nothing is checked
 out: for who writes a pack and loads its demo.
