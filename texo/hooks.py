@@ -32,10 +32,20 @@ MAX_ITEMS = 12
 TASK_IN_COMMAND = re.compile(r"\btexo\s+(?:task|task-note|log-time)\s+(\d+)|\btexo\s+context\s+--task\s+(\d+)")
 NOTE_IN_COMMAND = re.compile(r"\btexo\s+task-note\s+\d+.*--yes")
 COMMIT_MESSAGE = re.compile(r"git\s+commit\b[^\n]*?-m\s+(?:\"([^\"]+)\"|'([^']+)')")
+SECRET_NAME = r"\w*(?:api[_-]?key|token|secret|password|passwd)\w*"
 REDACTIONS = (
-    (re.compile(r"(?i)(\w*(?:api[_-]?key|token|secret|password|passwd)\w*)(\s*[:=]\s*)(\S+)"), r"\1\2[REDACTED]"),
+    # a private key, from its header to its footer or to the end of the text: before anything cuts the text
+    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.S), "[REDACTED]"),
+    # user:password@ in a URL
+    (re.compile(r"\b([a-z][a-z0-9+.\-]*://[^\s/:@]+):[^\s/@]+@"), r"\1:[REDACTED]@"),
+    # a named value: NAME=value, name: value, "name": "value"
+    (re.compile(rf"(?i)({SECRET_NAME}[\"']?)(\s*[:=]\s*)([\"']?)[^\s\"',}}]+"), r"\1\2\3[REDACTED]"),
+    # an option and its value: --db_password value
+    (re.compile(rf"(?i)(--?{SECRET_NAME})(\s+)(?!-)\S+"), r"\1\2[REDACTED]"),
     (re.compile(r"(?i)\b(bearer)\s+(\S+)"), r"\1 [REDACTED]"),
-    (re.compile(r"\b(sk|ghp|gho|ghs|github_pat|xox[abprs])[-_][A-Za-z0-9_\-]{12,}"), "[REDACTED]"),
+    (re.compile(r"\b(sk|ghp|gho|ghs|ghu|ghr|github_pat|glpat|xox[abprs])[-_][A-Za-z0-9_\-]{12,}"), "[REDACTED]"),
+    # an API key of the hub (Odoo): forty hexadecimal digits and the suffix of its keys
+    (re.compile(r"\b[0-9a-f]{40}_oak\b"), "[REDACTED]"),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED]"),
     (re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"), "[REDACTED]"),
     (re.compile(r"\b[0-9a-f]{48,}\b"), "[REDACTED]"),
@@ -61,6 +71,12 @@ def is_request(text):
 def short(text, limit=MAX_CHARS):
     text = " ".join((text or "").split())
     return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def clean(text, limit=MAX_CHARS):
+    """A text of the transcript as the proposal keeps it: redacted whole, then on one line and cut. In this
+    order: cut first, a secret on several lines would lose the marks that make it recognisable."""
+    return short(redact(text or ""), limit)
 
 
 def tool_name(name):
@@ -101,19 +117,19 @@ def extract(messages, root=None):
         if role == "user":
             if isinstance(content, str):
                 if is_request(content) and len(found["requests"]) < MAX_REQUESTS:
-                    found["requests"].append(short(content))
+                    found["requests"].append(clean(content))
                 continue
             for block in content or []:
                 if not isinstance(block, dict):
                     continue
                 if block.get("type") == "text" and is_request(block.get("text")) \
                         and len(found["requests"]) < MAX_REQUESTS:
-                    found["requests"].append(short(block.get("text")))
+                    found["requests"].append(clean(block.get("text")))
                 elif block.get("type") == "tool_result" and block.get("is_error"):
                     inner = block.get("content")
                     text = inner if isinstance(inner, str) else " ".join(
                         b.get("text", "") for b in inner or [] if isinstance(b, dict))
-                    add("errors", short(text, 200))
+                    add("errors", clean(text, 200))
             continue
         for block in content if isinstance(content, list) else []:
             if not isinstance(block, dict) or block.get("type") != "tool_use":
@@ -127,7 +143,7 @@ def extract(messages, root=None):
                 path = arguments["file_path"]
                 if root and str(path).startswith(str(root)):
                     path = str(Path(path).relative_to(root))
-                add("files", path)
+                add("files", redact(str(path)))
             if block.get("name") == "Bash" and isinstance(arguments.get("command"), str):
                 command = arguments["command"]
                 for match in TASK_IN_COMMAND.finditer(command):
@@ -135,7 +151,7 @@ def extract(messages, root=None):
                 if NOTE_IN_COMMAND.search(command):
                     found["note_written"] = True
                 for match in COMMIT_MESSAGE.finditer(command):
-                    add("commits", short(match.group(1) or match.group(2), 120))
+                    add("commits", clean(match.group(1) or match.group(2), 120))
     return found
 
 
