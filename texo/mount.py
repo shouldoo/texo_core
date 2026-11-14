@@ -195,6 +195,10 @@ HOOK_EVENTS = (("Stop", "stop"), ("PreCompact", "precompact"), ("SessionEnd", "s
 ASSISTANT_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop",
                     "SubagentStop", "PreCompact", "SessionEnd")
 HOOKS_FILE = ".agents/hooks.json"
+# the events of HOOKS_FILE that are about a tool: their entry is {matcher, hooks: [command]}. The entry of every
+# other event is the command itself: an assistant that reads the file refuses all of it, and loads no hook, when
+# it finds the nested form there
+TOOL_EVENTS = ("PreToolUse", "PostToolUse")
 
 
 def declared_hooks(fabric):
@@ -208,6 +212,36 @@ def hook_entry(hook):
     if hook.get("matcher") is not None:
         entry = {"matcher": hook["matcher"], **entry}
     return entry
+
+
+def hooks_file_entry(hook):
+    """A [[hook]] as HOOKS_FILE wants it: nested with its matcher for an event about a tool, the command alone
+    for any other event (which has no matcher there: the hook runs each time the event happens)."""
+    if hook["event"] in TOOL_EVENTS:
+        return hook_entry(hook)
+    return {"type": "command", "command": hook["command"]}
+
+
+def check_hooks_file(fabric):
+    """The problems of HOOKS_FILE: (level, message). One entry in the wrong form and the assistant that reads
+    the file loads none of its hooks, without saying so to the person."""
+    path = fabric.root / HOOKS_FILE
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        return [("error", f"{HOOKS_FILE} cannot be read ({error}): no hook of the file is loaded")]
+    problems = []
+    for hid, events in data.items() if isinstance(data, dict) else []:
+        for event, entries in events.items() if isinstance(events, dict) else []:
+            for entry in entries if isinstance(entries, list) else []:
+                commands = entry.get("hooks") if isinstance(entry, dict) and event in TOOL_EVENTS else [entry]
+                if not isinstance(commands, list) or not commands or not all(
+                        isinstance(c, dict) and c.get("command") for c in commands):
+                    problems.append(("error", f"{HOOKS_FILE}: the hook {hid} ({event}) is not in the form the "
+                                              "assistant reads, so no hook of the file is loaded: texo mount"))
+    return problems
 
 
 def hooks_update(fabric):
@@ -255,7 +289,7 @@ def write_hooks_file(fabric, out):
         for hid in previous:
             data.pop(hid, None)
         for hook in declared:
-            data[hook["id"]] = {hook["event"]: [hook_entry(hook)]}
+            data[hook["id"]] = {hook["event"]: [hooks_file_entry(hook)]}
     merge_json(path, apply)
     out.write(f"[ok] {HOOKS_FILE}: {', '.join(h['id'] for h in declared) or 'no hooks'}\n")
 
@@ -552,7 +586,7 @@ def mount(fabric, allow_install=False, out=sys.stdout, client=None, offline=Fals
 
 
 def doctor(fabric, out=sys.stdout, client=None):
-    failed = report(check_fabric(fabric), out)
+    failed = report(check_fabric(fabric) + check_hooks_file(fabric), out)
     try:
         url, token = fabric.hub()
         out.write("[ok] hub token present\n")
