@@ -271,6 +271,7 @@ packs/<nome>/
 │                    [[check]] name, pattern: un comando del settore che conta come controllo (i suoi test)
 ├── skills/          le skill del settore, con i loro riferimenti
 ├── seed.toml        attività, sezioni, regole e template di progetto del settore (texo seed)
+├── catalog.json     facoltativo: i modelli del settore per le domande in parole (texo ask), qui sotto
 ├── DESIGN.md        facoltativo: lo stile del settore (come si scrive il suo codice o i suoi testi), in DESIGN.md
 └── demo/            facoltativo: un'organizzazione inventata per i test (setup/load-demo.sh)
 ```
@@ -284,6 +285,45 @@ ciascuna con i suoi riferimenti (`skills/<skill>/references/`: delta, playbook, 
 suoi fili; il seed entra nel hub solo con `texo seed --apply`. `texo where --pack <nome>` dice dove sta. Un pacchetto porta solo metodo: le
 regole del settore arrivano nel hub con il seed, i valori di una norma (soglie, importi, scadenze) sono fatti
 dell'organizzazione nel hub, con l'articolo letto, la data di verifica e una scadenza.
+
+### Il catalogo delle domande
+
+`texo ask "<domanda>"` (e `texo query --ask`) trasforma una domanda in parole in una lettura di Odoo, senza
+un modello linguistico: sceglie il modello, il filtro, i campi. Che cosa riconosce è scritto come dati, in un
+catalogo: per ogni modello i sinonimi, i campi ammessi e quelli predefiniti, i filtri, e le regole con cui lo
+si sceglie.
+
+```json
+{"models": {"account.move": {
+    "description": "Fatture e note di credito",
+    "priority": 40,
+    "match": [["fattur"], ["nota di credito"], ["note di credito"]],
+    "synonyms": ["fatture"], "default_fields": ["name"], "allowed_fields": ["name", "partner_id"]}}}
+```
+
+`match` è un elenco di alternative, e ne basta una; ogni alternativa è un elenco di pezzi di parola che
+devono esserci tutti nella domanda. Così «fornitor» con «ordin» vuol dire un ordine d'acquisto, e «fornitor»
+da solo un contatto. Tra i modelli che corrispondono vince la `priority` più alta.
+
+Il catalogo ha tre strati, e ognuno sostituisce l'intera voce di un modello dello strato prima:
+
+| Strato | Dove |
+|---|---|
+| core | `texo/catalog.json` del core: i sette modelli di base |
+| pacchetti | `catalog.json` nella cartella di ogni pacchetto installato |
+| cartella | `texo.catalog.json` nella radice della cartella di lavoro |
+
+`texo mount` unisce gli strati, scrive in `.texo/catalog.json` ciò che pacchetti e cartella aggiungono (con da
+dove viene ogni modello), e controlla:
+
+- due pacchetti che definiscono lo stesso modello in modo diverso: errore, con i due nomi, e non monta nulla.
+  Lo risolve uno dei due pacchetti rinunciando, o la cartella con la sua voce per quel modello;
+- due modelli con la stessa `priority` e un'alternativa in comune: avviso, con i due modelli. Quale dei due
+  risponde dipenderebbe dall'ordine di lettura: se ne alza una;
+- un catalogo che non si legge o una voce nella forma sbagliata: errore.
+
+Fuori da una cartella di lavoro vale il solo catalogo del core. Il catalogo sceglie che cosa una domanda può
+leggere tra ciò che la persona può già leggere: non dà permessi, che restano quelli di Odoo.
 
 ## Comandi
 

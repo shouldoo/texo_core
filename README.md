@@ -136,6 +136,7 @@ and an expiry.
 | `doctor` | checks the hub, every pack, thread and credential, without showing a credential; asks every MCP thread for its tools and says which declare that they write on a thread declared `writes = "never"` |
 | `environment [status\|register] [--wait SECONDS]` | the key of this machine for the hub: whether it has one and what the hub says of it; `register` makes the key, prints the fingerprint and the address the person opens to confirm it, and waits |
 | `threads` | the threads of the folder (also the tool `threads` of the MCP server `memoria`) |
+| `ask "<question>"` | a question in plain words turned into a read of Odoo, without a language model: the models it knows and how each is recognised are data, the catalog of the core with what the packs (`catalog.json`) and the folder (`texo.catalog.json`) add (`docs/fili.md`, «Il catalogo delle domande») |
 | `thread <id> ls\|read\|search` | reads a git-remote source at its pinned ref, without cloning it |
 | `seed [--apply --yes]` | the `seed.toml` of every pack into the hub (route `admin/seed`, administrators): a dry run, then the writes |
 | `where [--pack <name>]` | the folder of the core, or of an installed pack |

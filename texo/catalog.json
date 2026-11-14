@@ -2,6 +2,8 @@
   "models": {
     "sale.order": {
       "description": "Ordini di vendita, preventivi clienti e conferme d'ordine",
+      "priority": 20,
+      "match": [["ordin"], ["preventiv"], ["vendit"]],
       "synonyms": ["ordini", "ordine", "preventivi", "preventivo", "vendite", "offerte"],
       "default_fields": ["name", "partner_id", "date_order", "amount_total", "state"],
       "allowed_fields": [
@@ -34,6 +36,8 @@
     },
     "purchase.order": {
       "description": "Ordini di acquisto ai fornitori e richieste di preventivo (RFQ)",
+      "priority": 30,
+      "match": [["acquist"], ["rfq"], ["fornitor", "ordin"]],
       "synonyms": ["acquisti", "acquisto", "ordini di acquisto", "ordine di acquisto", "rfq", "preventivi fornitore"],
       "default_fields": ["name", "partner_id", "date_order", "amount_total", "state"],
       "allowed_fields": [
@@ -63,6 +67,8 @@
     },
     "account.move": {
       "description": "Fatture di vendita, fatture fornitore e note di credito",
+      "priority": 40,
+      "match": [["fattur"], ["nota di credito"], ["note di credito"]],
       "synonyms": ["fatture", "fattura", "note di credito", "scadenze"],
       "default_fields": ["name", "partner_id", "invoice_date", "invoice_date_due", "amount_total", "amount_residual", "payment_state", "state"],
       "allowed_fields": [
@@ -106,6 +112,8 @@
     },
     "res.partner": {
       "description": "Anagrafica clienti, fornitori e contatti",
+      "priority": 10,
+      "match": [["client"], ["fornitor"], ["anagrafic"], ["contatt"], ["aziend"]],
       "synonyms": ["clienti", "cliente", "fornitori", "fornitore", "contatti", "aziende"],
       "default_fields": ["name", "city", "email", "phone", "vat", "user_id"],
       "allowed_fields": [
@@ -137,6 +145,8 @@
     },
     "project.task": {
       "description": "Attività, task di progetto, ticket e scadenze operative",
+      "priority": 70,
+      "match": [["task"], ["attività"], ["attivita"], ["compiti"], ["ticket"]],
       "synonyms": ["task", "attività", "schede", "compiti", "ticket"],
       "default_fields": ["name", "project_id", "user_ids", "date_deadline", "state", "is_closed"],
       "allowed_fields": [
@@ -176,6 +186,8 @@
     },
     "stock.picking": {
       "description": "Spedizioni, consegne, DDT, bolle e movimenti di magazzino",
+      "priority": 60,
+      "match": [["ddt"], ["bolla"], ["bolle"], ["spedizion"], ["consegn"], ["ricezion"]],
       "synonyms": ["ddt", "bolle", "bolla", "spedizioni", "spedizione", "consegne", "consegna", "ricezioni", "ricezione", "movimenti"],
       "default_fields": ["name", "partner_id", "scheduled_date", "date_done", "state", "picking_type_id"],
       "allowed_fields": [
@@ -216,6 +228,8 @@
     },
     "product.template": {
       "description": "Articoli, prodotti a catalogo, listini prezzi e giacenze",
+      "priority": 50,
+      "match": [["prodott"], ["articol"], ["listin"], ["giacenz"]],
       "synonyms": ["prodotti", "prodotto", "articoli", "articolo", "catalogo", "listino"],
       "default_fields": ["name", "default_code", "list_price", "standard_price", "qty_available", "type"],
       "allowed_fields": [
