@@ -88,8 +88,10 @@ CLAUDE.md, GEMINI.md                        the style; CLAUDE.md and GEMINI.md i
 .mcp.json, .gemini/settings.json            the MCP servers: memoria and the MCP threads
 .claude/settings.local.json                 the hooks of the proposal of the session note (texo hook) and the
                                             [[hook]] of texo.toml
-.agents/hooks.json                          the [[hook]] of texo.toml, when there are
+.agents/hooks.json                          the hook of the proposal of the session note (at the end of a turn)
+                                            and the [[hook]] of texo.toml
 .texo/proposals/                            the proposals of the session notes the hooks leave
+.texo/hooks/                                for each session, where the hook stopped reading its transcript
 .agents/skills/, .claude/skills/            links to the skills of core, threads, packs and the folder's own skills/
 <work_dirs of the packs>/                   e.g. progetti/ for the Odoo partners
 ```

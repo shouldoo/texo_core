@@ -9,23 +9,36 @@ changed, the commits, the errors met; secrets are redacted before anything is wr
 end of a turn that worked on a task without writing its note, the hook asks the agent to propose the note to
 the person; nothing is written in the hub by the hook, ever: the agent proposes, the person says yes.
 
+The transcript is read through texo.transcripts, which knows the formats of the assistants, and a piece at a
+time: next to the proposals the hook keeps, for each session, where it stopped reading and what it found
+(`.texo/hooks/<session>.json`), so that each event reads only what the transcript gained since the last one.
+
 The command never fails the assistant: outside a working folder, without a transcript, on any error it says
 nothing and exits 0.
 """
 import datetime
 import json
+import os
 import re
 import sys
+import time
 from pathlib import Path
 
+from . import transcripts
 from .config import find_root
 
 EVENTS = ("stop", "precompact", "session-end")
 PROPOSALS = ".texo/proposals"
-# the tools of the memory that name a task, by the name an assistant gives them (mcp__memoria__task, task)
+STATES = ".texo/hooks"
+STATE_DAYS = 30
+# the names an assistant gives, in the JSON of its hook, to what the hook reads: the transcript, the session,
+# and the turn that goes on because a hook asked it to
+TRANSCRIPT_FIELDS = ("transcript_path", "transcriptPath")
+SESSION_FIELDS = ("session_id", "conversationId")
+CONTINUING_FIELDS = ("stop_hook_active", "continuationActive")
+# the tools of the memory that name a task, by the name the hub gives them
 TASK_TOOLS = ("task", "context", "task_note", "log_time")
 NOTE_TOOLS = ("task_note",)
-EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 MAX_REQUESTS = 6
 MAX_CHARS = 400
 MAX_ITEMS = 12
@@ -59,15 +72,6 @@ def redact(text):
     return text
 
 
-NOT_A_REQUEST = ("<", "[Subagent hand-back]", "Another Claude session sent a message")
-
-
-def is_request(text):
-    """A text the person wrote, not a notice, a message of another agent or a system turn."""
-    text = (text or "").lstrip()
-    return bool(text) and not any(text.startswith(mark) for mark in NOT_A_REQUEST)
-
-
 def short(text, limit=MAX_CHARS):
     text = " ".join((text or "").split())
     return text if len(text) <= limit else text[:limit - 1] + "…"
@@ -79,79 +83,56 @@ def clean(text, limit=MAX_CHARS):
     return short(redact(text or ""), limit)
 
 
-def tool_name(name):
-    """The name of a tool of the memory as the hub names it: the MCP prefix of the assistant dropped."""
-    return (name or "").rsplit("__", 1)[-1]
-
-
 def read_transcript(path):
-    """The messages of a transcript (one JSON object per line, the format of the assistants that keep one):
-    [(role, content)] with content a string or a list of blocks; a line that is not JSON is skipped."""
-    messages = []
+    """The events of a whole transcript (texo.transcripts says what an event is)."""
+    return transcripts.Adapter(keep=redact).read(path)
+
+
+def nothing_found():
+    return {"tasks": [], "requests": [], "files": [], "commits": [], "errors": [], "note_written": False}
+
+
+def task_id(value):
     try:
-        with open(path, encoding="utf-8") as handle:
-            for line in handle:
-                try:
-                    entry = json.loads(line)
-                except ValueError:
-                    continue
-                if entry.get("type") in ("user", "assistant") and isinstance(entry.get("message"), dict):
-                    origin = (entry.get("origin") or {}).get("kind")
-                    if entry["type"] == "user" and origin not in (None, "human"):
-                        continue  # a message another agent or the assistant put in the turn of the person
-                    messages.append((entry["type"], entry["message"].get("content")))
-    except OSError:
-        return []
-    return messages
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
-def extract(messages, root=None):
-    """What the session note is made of: {tasks, requests, files, commits, errors, note_written}."""
-    found = {"tasks": [], "requests": [], "files": [], "commits": [], "errors": [], "note_written": False}
+def extract(events, root=None, found=None):
+    """What the session note is made of: {tasks, requests, files, commits, errors, note_written}. With found,
+    what the events add to what was found before them."""
+    found = found if found is not None else nothing_found()
 
     def add(key, value):
         if value and value not in found[key] and len(found[key]) < MAX_ITEMS:
             found[key].append(value)
 
-    for role, content in messages:
-        if role == "user":
-            if isinstance(content, str):
-                if is_request(content) and len(found["requests"]) < MAX_REQUESTS:
-                    found["requests"].append(clean(content))
-                continue
-            for block in content or []:
-                if not isinstance(block, dict):
-                    continue
-                if block.get("type") == "text" and is_request(block.get("text")) \
-                        and len(found["requests"]) < MAX_REQUESTS:
-                    found["requests"].append(clean(block.get("text")))
-                elif block.get("type") == "tool_result" and block.get("is_error"):
-                    inner = block.get("content")
-                    text = inner if isinstance(inner, str) else " ".join(
-                        b.get("text", "") for b in inner or [] if isinstance(b, dict))
-                    add("errors", clean(text, 200))
-            continue
-        for block in content if isinstance(content, list) else []:
-            if not isinstance(block, dict) or block.get("type") != "tool_use":
-                continue
-            name, arguments = tool_name(block.get("name")), block.get("input") or {}
-            if name in TASK_TOOLS and arguments.get("task_id"):
-                add("tasks", int(arguments["task_id"]))
-            if name in NOTE_TOOLS and arguments.get("confirm") is True:
+    for event in events:
+        kind, phase, target = event["kind"], event["phase"], event["target"]
+        if kind == "request":
+            if len(found["requests"]) < MAX_REQUESTS:
+                found["requests"].append(clean(event["text"]))
+        elif phase == "result":
+            if event["ok"] is False:
+                add("errors", clean(event["text"], 200))
+        elif kind == "memory":
+            if target in TASK_TOOLS:
+                add("tasks", task_id(event["args"].get("task_id")))
+            if target in NOTE_TOOLS and event["args"].get("confirm") is True:
                 found["note_written"] = True
-            if block.get("name") in EDIT_TOOLS and arguments.get("file_path"):
-                path = arguments["file_path"]
-                if root and str(path).startswith(str(root)):
-                    path = str(Path(path).relative_to(root))
-                add("files", redact(str(path)))
-            if block.get("name") == "Bash" and isinstance(arguments.get("command"), str):
-                command = arguments["command"]
-                for match in TASK_IN_COMMAND.finditer(command):
-                    add("tasks", int(match.group(1) or match.group(2)))
-                if NOTE_IN_COMMAND.search(command):
-                    found["note_written"] = True
-                for match in COMMIT_MESSAGE.finditer(command):
-                    add("commits", clean(match.group(1) or match.group(2), 120))
+        elif kind == "edit" and target:
+            path = str(target)
+            if root and path.startswith(str(root)):
+                path = str(Path(path).relative_to(root))
+            add("files", redact(path))
+        elif kind == "command" and isinstance(target, str):
+            for match in TASK_IN_COMMAND.finditer(target):
+                add("tasks", int(match.group(1) or match.group(2)))
+            if NOTE_IN_COMMAND.search(target):
+                found["note_written"] = True
+            for match in COMMIT_MESSAGE.finditer(target):
+                add("commits", clean(match.group(1) or match.group(2), 120))
     return found
 
 
@@ -191,22 +172,68 @@ def proposal_path(root, session_id, today):
     return Path(root) / PROPOSALS / f"{name}.md"
 
 
+def state_path(root, session_id):
+    return Path(root) / STATES / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', session_id)[:80] or 'session'}.json"
+
+
+def load_state(path):
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    found = state.get("found") if isinstance(state, dict) else None
+    if not isinstance(found, dict) or set(found) != set(nothing_found()):
+        return {}
+    return state
+
+
+def save_state(path, state):
+    """Written whole or not at all: to a file of this process, then renamed over the state."""
+    new = not path.exists()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    os.replace(temporary, path)
+    if new:  # a session begins: the states of the sessions that ended long ago go
+        limit = time.time() - STATE_DAYS * 86400
+        for old in path.parent.iterdir():
+            try:
+                if old != path and old.stat().st_mtime < limit:
+                    old.unlink()
+            except OSError:
+                pass
+
+
+def first(payload, names):
+    return next((payload[name] for name in names if payload.get(name)), None)
+
+
 def run(event, stdin=sys.stdin, out=sys.stdout, root=None, today=None):
-    """One event of an assistant: read its JSON, read the transcript, write or drop the proposal, and at the end
-    of a turn ask the agent, once per session, to propose the note. Always exits 0 and says nothing unless it
-    asks."""
+    """One event of an assistant: read its JSON, read what the transcript gained, write or drop the proposal,
+    and at the end of a turn ask the agent, once per session, to propose the note. Always exits 0 and says
+    nothing unless it asks."""
     try:
         payload = json.loads(stdin.read() or "{}")
     except ValueError:
         return 0
+    if not isinstance(payload, dict):
+        return 0
     root = Path(root) if root else find_root(Path(payload.get("cwd") or Path.cwd()))
-    if not root or not isinstance(payload, dict):
+    transcript = first(payload, TRANSCRIPT_FIELDS)
+    session_id = str(first(payload, SESSION_FIELDS) or "")
+    if not root or not isinstance(transcript, str):
         return 0
-    transcript = payload.get("transcript_path")
-    session_id = payload.get("session_id") or ""
-    if not transcript:
-        return 0
-    found = extract(read_transcript(transcript), root)
+    kept = state_path(root, session_id)
+    state = load_state(kept)
+    adapter = transcripts.Adapter(state.get("transcript"), keep=redact)
+    before = adapter.offset
+    events = adapter.read(transcript)
+    found = extract(events, root, None if adapter.restarted else state.get("found"))
+    if event == "session-end":
+        if kept.exists():
+            kept.unlink()
+    elif adapter.offset != before or adapter.restarted:
+        save_state(kept, {"transcript": adapter.state(), "found": found})
     today = today or datetime.date.today().isoformat()
     path = proposal_path(root, session_id, today)
     asked = path.with_suffix(".asked")
@@ -218,9 +245,12 @@ def run(event, stdin=sys.stdin, out=sys.stdout, root=None, today=None):
         return 0
     if not (found["tasks"] or found["files"]):
         return 0
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(proposal_text(session_id, found, today), encoding="utf-8")
-    if event != "stop" or payload.get("stop_hook_active") or asked.exists():
+    if events or not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(proposal_text(session_id, found, today), encoding="utf-8")
+    # only the assistant whose hook is known to take the request below is asked: for another, the proposal
+    # waits in its folder, where the rules of the folder say to look
+    if event != "stop" or "transcript_path" not in payload or first(payload, CONTINUING_FIELDS) or asked.exists():
         return 0
     asked.write_text(today + "\n", encoding="utf-8")
     worked = (f"ha lavorato sul task {', '.join(str(t) for t in found['tasks'])}" if found["tasks"]

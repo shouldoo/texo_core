@@ -99,6 +99,8 @@ def check_hooks(fabric):
         problems.append(("error", f"hook {duplicate} declared twice"))
     for hook in fabric.hooks:
         hid = hook.get("id") or "?"
+        if hid == NOTE_HOOK:
+            problems.append(("error", f"hook {hid}: this id is the one of the hook of the session note"))
         if not threads.ID.match(hook.get("id") or ""):
             problems.append(("error", f"hook {hid}: id is one lowercase word (letters, digits, - or _)"))
         if hook.get("event") not in ASSISTANT_EVENTS:
@@ -195,6 +197,10 @@ HOOK_EVENTS = (("Stop", "stop"), ("PreCompact", "precompact"), ("SessionEnd", "s
 ASSISTANT_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop",
                     "SubagentStop", "PreCompact", "SessionEnd")
 HOOKS_FILE = ".agents/hooks.json"
+# the key, in HOOKS_FILE, of the hook of the proposal of the session note, and the events it is written for
+# there: only those the assistant that reads the file is known to raise and to take in this form
+NOTE_HOOK = "texo-note"
+NOTE_HOOK_EVENTS = (("Stop", "stop"),)
 # the events of HOOKS_FILE that are about a tool: their entry is {matcher, hooks: [command]}. The entry of every
 # other event is the command itself: an assistant that reads the file refuses all of it, and loads no hook, when
 # it finds the nested form there
@@ -277,21 +283,21 @@ def hooks_update(fabric):
 
 
 def write_hooks_file(fabric, out):
-    """The [[hook]] of texo.toml in .agents/hooks.json too, one key per hook; the keys of a previous mount are
-    replaced, those the person wrote stay."""
+    """.agents/hooks.json, one key per hook: the hook of the proposal of the session note (texo hook), then the
+    [[hook]] of texo.toml; the keys of a previous mount are replaced, those the person wrote stay."""
     declared = declared_hooks(fabric)
     previous = [h.get("id") for h in load_state(fabric).get("hooks", [])]
-    path = fabric.root / HOOKS_FILE
-    if not declared and not (previous and path.is_file()):
-        return
+    command = f"{texo_command(fabric)} --root {fabric.root}"
 
     def apply(data):
         for hid in previous:
             data.pop(hid, None)
+        data[NOTE_HOOK] = {event: [{"type": "command", "command": f"{command} hook {argument}"}]
+                           for event, argument in NOTE_HOOK_EVENTS}
         for hook in declared:
             data[hook["id"]] = {hook["event"]: [hooks_file_entry(hook)]}
-    merge_json(path, apply)
-    out.write(f"[ok] {HOOKS_FILE}: {', '.join(h['id'] for h in declared) or 'no hooks'}\n")
+    merge_json(fabric.root / HOOKS_FILE, apply)
+    out.write(f"[ok] {HOOKS_FILE}: {', '.join([NOTE_HOOK] + [h['id'] for h in declared])}\n")
 
 
 def write_assistants(fabric, out):
@@ -380,8 +386,7 @@ def ignore_generated(fabric, out):
     path = fabric.root / ".gitignore"
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
     wanted = list(IGNORED) + [f"{folder}/" for folder in work_dirs(fabric)]
-    if fabric.hooks:
-        wanted.append(HOOKS_FILE)
+    wanted.append(HOOKS_FILE)
     # the files of the assistants mount wrote; those the person wrote are theirs to version
     wanted += [name for name in AGENT_FILES + POINTERS if (fabric.root / name).is_file()
                and GENERATED in (fabric.root / name).read_text(encoding="utf-8")]
