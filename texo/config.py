@@ -35,6 +35,8 @@ import stat
 import tomllib
 from pathlib import Path
 
+from . import files
+
 FILE = "texo.toml"
 SLUG = re.compile(r"^[a-z][a-z0-9_]*$")
 STATE_DIR = ".texo"
@@ -139,7 +141,7 @@ class Fabric:
     def save_remote(self, remote):
         self.remote = remote
         self.state_dir.mkdir(exist_ok=True)
-        (self.state_dir / "config.json").write_text(json.dumps(remote, indent=2) + "\n", encoding="utf-8")
+        files.write_text(self.state_dir / "config.json", json.dumps(remote, indent=2) + "\n")
 
     def secret(self, reference):
         """The value of an env:NAME reference, from the environment or the credentials of the organisation."""
