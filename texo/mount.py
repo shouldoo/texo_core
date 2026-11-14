@@ -18,7 +18,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, files, hub, packs, threads
+from . import __version__, catalog, files, hub, packs, threads
 
 try:
     import fcntl
@@ -106,6 +106,8 @@ def check_fabric(fabric):
         problems.append(("info", f"personal threads: {', '.join(personal)}: nothing passes between them and the hub "
                                  "or the threads of the organisation"))
     problems += check_hooks(fabric)
+    # the catalog of the grounder: a conflict between two packs is an error, a tie a warning
+    problems += catalog.of_fabric(fabric)[2]
     return problems
 
 
@@ -464,6 +466,18 @@ def write_checks(fabric, out):
         path.unlink()
 
 
+def write_catalog(fabric, out):
+    """What the packs and the folder add to the catalog of the grounder, in .texo/catalog.json with where each
+    model comes from; nothing added, no file."""
+    added, origin, _problems = catalog.of_fabric(fabric)
+    path = fabric.root / catalog.MOUNTED_FILE
+    if added:
+        files.write_text(path, json.dumps({"models": added, "origin": origin}, indent=2, ensure_ascii=False) + "\n")
+        out.write("[ok] catalog: " + ", ".join(f"{model} ({origin[model]})" for model in sorted(added)) + "\n")
+    elif path.is_file():
+        path.unlink()
+
+
 def work_dirs(fabric):
     """The working folders the packs declare (work_dirs in pack.toml): created by mount, never versioned."""
     folders = []
@@ -764,6 +778,7 @@ def mount_folder(fabric, allow_install, out, client, offline):
         failed |= status == "error"
     files.write_text(fabric.state_dir / "THREADS.md", threads_markdown(fabric, states))
     write_checks(fabric, out)
+    write_catalog(fabric, out)
     servers = write_assistants(fabric, out)
     skills = link_skills(fabric, out)
     for folder in work_dirs(fabric):

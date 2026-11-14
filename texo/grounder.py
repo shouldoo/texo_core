@@ -1,14 +1,18 @@
 """
 Texo Semantic Grounder: deterministic grounding of natural language ERP queries
 into model, domain and fields for Odoo (search_read).
+
+The models a question may be about, and how each is recognised, are data: the catalog of the core, with what
+the packs and the working folder add (texo/catalog.py).
 """
 
 import calendar
 import json
-import os
 import re
 from datetime import date
 from typing import Any, Dict, List, Optional
+
+from . import catalog
 
 
 class OdooSemanticGrounder:
@@ -20,11 +24,13 @@ class OdooSemanticGrounder:
         "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
     }
 
-    def __init__(self, catalog_path: Optional[str] = None):
-        if not catalog_path:
-            catalog_path = os.path.join(os.path.dirname(__file__), "catalog.json")
-        with open(catalog_path, "r", encoding="utf-8") as f:
-            self.catalog = json.load(f).get("models", {})
+    def __init__(self, catalog_path: Optional[str] = None, root: Optional[str] = None):
+        """The catalog of a file, or the core's with what the working folder at root mounted on top."""
+        if catalog_path:
+            with open(catalog_path, "r", encoding="utf-8") as f:
+                self.catalog = json.load(f).get("models", {})
+        else:
+            self.catalog = catalog.models_of(root)
 
     def resolve_temporal(self, text: str, date_field: str, ref_date: Optional[date] = None) -> List[List[Any]]:
         if not date_field:
@@ -79,21 +85,10 @@ class OdooSemanticGrounder:
     def match_model(self, text: str) -> Optional[str]:
         t_lower = text.lower()
 
-        # 1. Regole prioritarie specifiche
-        if any(w in t_lower for w in ["task", "attività", "attivita", "compiti", "ticket"]):
-            return "project.task"
-        if any(w in t_lower for w in ["ddt", "bolla", "bolle", "spedizion", "consegn", "ricezion"]):
-            return "stock.picking"
-        if any(w in t_lower for w in ["prodott", "articol", "listin", "giacenz"]):
-            return "product.template"
-        if "fattur" in t_lower or "nota di credito" in t_lower or "note di credito" in t_lower:
-            return "account.move"
-        if "acquist" in t_lower or "rfq" in t_lower or ("fornitor" in t_lower and "ordin" in t_lower):
-            return "purchase.order"
-        if "ordin" in t_lower or "preventiv" in t_lower or "vendit" in t_lower:
-            return "sale.order"
-        if any(w in t_lower for w in ["client", "fornitor", "anagrafic", "contatt", "aziend"]):
-            return "res.partner"
+        # 1. Le regole del catalogo (priority, match): texo/catalog.py
+        model = catalog.match_model(self.catalog, text)
+        if model:
+            return model
 
         # 2. Fallback su token
         tokens = set(re.findall(r"\b\w+\b", t_lower))
@@ -199,14 +194,20 @@ class OdooSemanticGrounder:
         return True
 
 
-_GLOBAL_GROUNDER = None
-
-def get_grounder() -> OdooSemanticGrounder:
-    global _GLOBAL_GROUNDER
-    if _GLOBAL_GROUNDER is None:
-        _GLOBAL_GROUNDER = OdooSemanticGrounder()
-    return _GLOBAL_GROUNDER
+_GROUNDERS: Dict[str, OdooSemanticGrounder] = {}
 
 
-def ground_query(text: str, ref_date: Optional[date] = None, limit: int = 20) -> Dict[str, Any]:
-    return get_grounder().ground(text, ref_date=ref_date, limit=limit)
+def get_grounder(root: Optional[str] = None) -> OdooSemanticGrounder:
+    """The grounder of a working folder (the one above the current directory by default), made once."""
+    if root is None:
+        from .config import find_root
+        root = find_root(None)
+    key = str(root or "")
+    if key not in _GROUNDERS:
+        _GROUNDERS[key] = OdooSemanticGrounder(root=root)
+    return _GROUNDERS[key]
+
+
+def ground_query(text: str, ref_date: Optional[date] = None, limit: int = 20,
+                 root: Optional[str] = None) -> Dict[str, Any]:
+    return get_grounder(root).ground(text, ref_date=ref_date, limit=limit)
