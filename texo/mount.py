@@ -788,11 +788,13 @@ def doctor(fabric, out=sys.stdout, client=None):
     try:
         url, token = fabric.hub()
         out.write("[ok] hub token present\n")
-    except ConfigError as error:
+    except (ConfigError, hub.HubError) as error:
         out.write(f"[error] hub: {error}\n")
         failed = True
     else:
-        failed |= doctor_hub(fabric, client or hub.Hub(url, token), out)
+        client = client or hub.Hub(url, token)
+        failed |= doctor_hub(fabric, client, out)
+        failed |= doctor_environment(fabric, client, out)
     for pack in fabric.packs:
         installed = packs.manifest(fabric, pack) is not None
         out.write(f"[{'ok' if installed else 'error'}] pack {pack.get('name')} {pack.get('version')}: "
@@ -822,6 +824,38 @@ def doctor_hub(fabric, client, out):
         out.write(f"[warning] the hub names the organisation {remote['organisation']}, texo.toml "
                   f"{fabric.organisation}: the credentials file is named after texo.toml\n")
     doctor_hub_tools(client, out)
+    return False
+
+
+def doctor_environment(fabric, client, out):
+    """The environment this machine is for the hub: its name, state and the expiry of its token; whether the
+    machine has what its key needs; whether the organisation answers only its environments. True on an error."""
+    from . import environment
+    keyed = environment.has_key(fabric.organisation)
+    if keyed:
+        try:
+            environment.ssh_keygen()
+        except ConfigError as error:
+            out.write(f"[error] environment: {error}\n")
+            return True
+    try:
+        told = client.call("environment")
+    except hub.HubError:
+        told = None  # a hub that keeps no registry of environments
+    if not isinstance(told, dict):
+        if keyed:
+            out.write("[warning] environment: this machine has a key, the hub keeps no registry of environments\n")
+        return False
+    if told.get("environment"):
+        out.write(f"[ok] environment {told['environment']}: {told.get('state')}, token until "
+                  f"{told.get('expires')} UTC\n")
+        return False
+    if told.get("required"):
+        out.write("[error] environment: the organisation answers only its registered environments, and this token "
+                  "is not the key of one (texo environment register)\n")
+        return True
+    out.write("[info] environment: this machine works with a token of the person, not with a key of its own "
+              "(texo environment register)\n")
     return False
 
 
